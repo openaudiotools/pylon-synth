@@ -332,6 +332,8 @@
       let degree = DEGREES[degreeIndex % DEGREES.length];
       if (Math.random() < 0.3) degree += Math.floor(Math.random() * 3) + 1;
       degreeIndex++;
+      const isBeatOne = degreeIndex === 1;
+      if (!isBeatOne && Math.random() < 0.2) return; // 20% mute, never on beat 1
 
       const p = {...params};
       const r = Math.random();
