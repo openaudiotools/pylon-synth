@@ -105,6 +105,19 @@ export class Pylon {
     // Track owned resources for disposal.
     this._meshes = [upperCone, lowerCone, ring, halo];
 
+    // References used by interaction (M3): grabbed-state visual feedback.
+    this._ring = ring;
+    this._halo = halo;
+    // Resting (un-grabbed) values, restored on release.
+    this._restRingEmissive = ring.material.emissiveIntensity;
+    this._restHaloOpacity = halo.material.opacity;
+
+    // Raycast targets, each back-referencing this Pylon so a mesh hit can be
+    // mapped to its owner (see interaction.js). The halo is excluded: it is a
+    // transparent, depthWrite:false sprite-like ring and not a grab target.
+    this.pickTargets = [upperCone, lowerCone, ring];
+    for (const mesh of this.pickTargets) mesh.userData.pylon = this;
+
     // Place at ground slot and lift to the resting mid-band height.
     group.position.x = this._x;
     group.position.z = this._z;
@@ -128,6 +141,30 @@ export class Pylon {
     const clamped = Math.min(BAND.max, Math.max(BAND.min, y));
     this.object3d.position.y = clamped;
     return clamped;
+  }
+
+  /**
+   * Normalized height in [0, 1]: `(y - BAND.min) / (BAND.max - BAND.min)`.
+   *
+   * This is the parameter-agnostic value downstream MIDI (M4) consumes — it
+   * maps linearly across the full CC range. Because height is always clamped to
+   * the band by `setHeight`, this is already within [0, 1].
+   * @returns {number}
+   */
+  getNormalized() {
+    return (this.getHeight() - BAND.min) / (BAND.max - BAND.min);
+  }
+
+  /**
+   * Toggle grabbed-state visual feedback: while grabbed, the connector ring and
+   * halo brighten/intensify; on release they return to their resting look.
+   * @param {boolean} grabbed
+   */
+  setGrabbed(grabbed) {
+    this._ring.material.emissiveIntensity = grabbed
+      ? 1.4
+      : this._restRingEmissive;
+    this._halo.material.opacity = grabbed ? 0.85 : this._restHaloOpacity;
   }
 
   /** Release GPU resources owned by this pylon. */
