@@ -1,6 +1,6 @@
 (
 SynthDef.new(\reverb, {
-  arg bus = 16, mix = 0.5, room = 0.8, damp = 0.5;
+  arg bus = 16, mix = 0.3, room = 0.8, damp = 0.5;
 
   var in, wet;
   in = In.ar(bus, 2);

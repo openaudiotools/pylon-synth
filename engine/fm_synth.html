@@ -232,7 +232,7 @@
         // FM voices write to bus 16; reverb reads bus 16 and outputs to 0.
         const reverbId = supersonic.nextNodeId();
         supersonic.send('/s_new', 'reverb', reverbId, 1, 0,
-          'bus', 16, 'mix', 0.5, 'room', 0.8, 'damp', 0.5);
+          'bus', 16, 'mix', 0.1, 'room', 0.8, 'damp', 0.5);
 
         engineReady = true;
         statusEl.textContent = 'engine: ready';
@@ -246,10 +246,10 @@
     }
 
     // ---------------------------------------------------------------------------
-    // Minor scale / sequencer helpers (identical to pylon_synth.html)
+    // Ritusen scale / sequencer helpers
     // ---------------------------------------------------------------------------
-    const MINOR_SCALE = [0, 2, 3, 5, 7, 8, 10];
-    const DEGREES = [0, 2, 4, 5, 8, 9, 11];
+    const MINOR_SCALE = [0, 2, 5, 7, 9]; // Ritusen pentatonic
+    const DEGREES = [0, 1, 2, 3, 4, 5, 6];
     const ROOT_MIDI = 69; // A4
 
     function degreeToFreq(degree) {
@@ -290,7 +290,7 @@
     // ---------------------------------------------------------------------------
     // Lookahead scheduler — 135 BPM, 0.5-beat notes
     // ---------------------------------------------------------------------------
-    const BPM = 125;
+    const BPM = 110;
     const DUR_BEATS = 0.5;
     const NOTE_DUR_S = (60 / BPM) * DUR_BEATS;
     const LOOKAHEAD_MS = 50;
@@ -302,30 +302,39 @@
     let degreeIndex = 0;
     let pendingRelease = null; // { id, releaseAt }
 
+    function fireNote(freq, wallTime, dur, p) {
+      if (pendingRelease) {
+        releaseNote(pendingRelease.id);
+        pendingRelease = null;
+      }
+      const id = triggerNote(freq, p);
+      const releaseAt = wallTime + dur * 0.9;
+      pendingRelease = {id, releaseAt};
+      setTimeout(() => {
+        releaseNote(id);
+        if (pendingRelease && pendingRelease.id === id) pendingRelease = null;
+      }, (releaseAt - performance.now() / 1000) * 1000);
+    }
+
     function scheduleNote(wallTime) {
       let degree = DEGREES[degreeIndex % DEGREES.length];
       if (Math.random() < 0.3) degree += Math.floor(Math.random() * 3) + 1;
       degreeIndex++;
 
-      const freq = degreeToFreq(degree);
       const p = {...params};
+      const r = Math.random();
 
-      // Release the previous note if it hasn't been released yet
-      if (pendingRelease) {
-        releaseNote(pendingRelease.id);
-        pendingRelease = null;
+      if (r < 0.25) {
+        // ~25% chance: double note — degree then degree+1 in the same slot
+        const halfDur = NOTE_DUR_S * 0.5;
+        fireNote(degreeToFreq(degree), wallTime, halfDur, p);
+        setTimeout(() => {
+          fireNote(degreeToFreq(degree + 1), wallTime + halfDur, halfDur, p);
+        }, (wallTime + halfDur - performance.now() / 1000) * 1000);
+      } else {
+        // ~75% chance: normal single note
+        fireNote(degreeToFreq(degree), wallTime, NOTE_DUR_S, p);
       }
-
-      const id = triggerNote(freq, p);
-
-      // Schedule release just before next note
-      const releaseAt = wallTime + NOTE_DUR_S * 0.9;
-      pendingRelease = {id, releaseAt};
-
-      setTimeout(() => {
-        releaseNote(id);
-        if (pendingRelease && pendingRelease.id === id) pendingRelease = null;
-      }, (releaseAt - performance.now() / 1000) * 1000);
     }
 
     function tick() {
