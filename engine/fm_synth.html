@@ -232,7 +232,7 @@
         // FM voices write to bus 16; reverb reads bus 16 and outputs to 0.
         const reverbId = supersonic.nextNodeId();
         supersonic.send('/s_new', 'reverb', reverbId, 1, 0,
-          'bus', 16, 'mix', 0.1, 'room', 0.8, 'damp', 0.5);
+          'bus', 16, 'mix', 0.3, 'room', 0.8, 'damp', 0.5);
 
         engineReady = true;
         statusEl.textContent = 'engine: ready';
@@ -260,63 +260,75 @@
     }
 
     // ---------------------------------------------------------------------------
-    // Voice management via scsynth
+    // Voice management via scsynth — sample-accurate via OSC bundles
     //
-    //   /s_new "fm" id 0 0 freq <f> m1Ratio <v> ...
-    //   /n_set id gate 0   → releases envelope → doneAction:2 self-frees
+    //   triggerNote sends /s_new inside a timetag'd bundle so scsynth defers
+    //   playback to the exact sample. releaseNote does the same for /n_set.
+    //   No setTimeout is used for any audio event — all timing lives in scsynth.
     // ---------------------------------------------------------------------------
-    function triggerNote(freq, p) {
+    const {osc} = SuperSonic;
+
+    // Convert an AudioContext timestamp to an NTP timetag (seconds since 1900).
+    // supersonic.initTime is the NTP time at which the AudioContext clock was zero.
+    function audioCtxToNtp(t) {
+      return supersonic.initTime + t;
+    }
+
+    function triggerNote(freq, audioCtxTime, p) {
       const id = supersonic.nextNodeId();
-      supersonic.send(
-        '/s_new', 'fm', id, 0, 0,
-        'freq', freq,
-        'm1Ratio', p.m1Ratio,
-        'm2Ratio', p.m2Ratio,
-        'c1Ratio', p.c1Ratio,
-        'c2Ratio', p.c2Ratio,
-        'm1Index', p.m1Index,
-        'm2Index', p.m2Index,
-        'atk', p.atk,
-        'rel', p.rel
+      const bundle = osc.encodeSingleBundle(
+        audioCtxToNtp(audioCtxTime),
+        '/s_new',
+        ['fm', id, 0, 0,
+         'freq', freq,
+         'm1Ratio', p.m1Ratio,
+         'm2Ratio', p.m2Ratio,
+         'c1Ratio', p.c1Ratio,
+         'c2Ratio', p.c2Ratio,
+         'm1Index', p.m1Index,
+         'm2Index', p.m2Index,
+         'atk', p.atk,
+         'rel', p.rel]
       );
+      supersonic.sendOSC(bundle);
       return id;
     }
 
-    function releaseNote(id) {
-      supersonic.send('/n_set', id, 'gate', 0);
+    function releaseNote(id, audioCtxTime) {
+      // Send release as a timetag'd bundle so scsynth schedules it sample-accurately.
+      const bundle = osc.encodeSingleBundle(
+        audioCtxToNtp(audioCtxTime),
+        '/n_set',
+        [id, 'gate', 0]
+      );
+      supersonic.sendOSC(bundle);
       // synth self-frees via doneAction: 2 after the release ramp
     }
 
     // ---------------------------------------------------------------------------
-    // Lookahead scheduler — 135 BPM, 0.5-beat notes
+    // Lookahead scheduler — 110 BPM, 0.5-beat notes
+    //
+    // nextNoteTime is tracked in AudioContext time (seconds since context start).
+    // tick() fires every LOOKAHEAD_MS and pre-schedules any notes falling within
+    // the SCHEDULE_AHEAD window as OSC bundles — no setTimeout for audio events.
     // ---------------------------------------------------------------------------
     const BPM = 110;
     const DUR_BEATS = 0.5;
     const NOTE_DUR_S = (60 / BPM) * DUR_BEATS;
     const LOOKAHEAD_MS = 50;
-    const SCHEDULE_AHEAD = 0.1; // seconds
+    const SCHEDULE_AHEAD = 0.15; // seconds
 
     let seqRunning = false;
     let seqTimer = null;
-    let nextNoteTime = 0;   // wall-clock (performance.now() / 1000)
+    let nextNoteTime = 0;   // AudioContext time (seconds)
     let degreeIndex = 0;
-    let pendingRelease = null; // { id, releaseAt }
 
-    function fireNote(freq, wallTime, dur, p) {
-      if (pendingRelease) {
-        releaseNote(pendingRelease.id);
-        pendingRelease = null;
-      }
-      const id = triggerNote(freq, p);
-      const releaseAt = wallTime + dur * 0.9;
-      pendingRelease = {id, releaseAt};
-      setTimeout(() => {
-        releaseNote(id);
-        if (pendingRelease && pendingRelease.id === id) pendingRelease = null;
-      }, (releaseAt - performance.now() / 1000) * 1000);
+    function fireNote(freq, audioCtxTime, dur, p) {
+      const id = triggerNote(freq, audioCtxTime, p);
+      releaseNote(id, audioCtxTime + dur * 0.9);
     }
 
-    function scheduleNote(wallTime) {
+    function scheduleNote(audioCtxTime) {
       let degree = DEGREES[degreeIndex % DEGREES.length];
       if (Math.random() < 0.3) degree += Math.floor(Math.random() * 3) + 1;
       degreeIndex++;
@@ -325,20 +337,19 @@
       const r = Math.random();
 
       if (r < 0.25) {
-        // ~25% chance: double note — degree then degree+1 in the same slot
+        // ~25% chance: double note — degree then degree+1 in the same slot.
+        // Both hits are pre-scheduled as bundles; no setTimeout needed.
         const halfDur = NOTE_DUR_S * 0.5;
-        fireNote(degreeToFreq(degree), wallTime, halfDur, p);
-        setTimeout(() => {
-          fireNote(degreeToFreq(degree + 1), wallTime + halfDur, halfDur, p);
-        }, (wallTime + halfDur - performance.now() / 1000) * 1000);
+        fireNote(degreeToFreq(degree),     audioCtxTime,           halfDur, p);
+        fireNote(degreeToFreq(degree + 1), audioCtxTime + halfDur, halfDur, p);
       } else {
         // ~75% chance: normal single note
-        fireNote(degreeToFreq(degree), wallTime, NOTE_DUR_S, p);
+        fireNote(degreeToFreq(degree), audioCtxTime, NOTE_DUR_S, p);
       }
     }
 
     function tick() {
-      const now = performance.now() / 1000;
+      const now = supersonic.audioContext.currentTime;
       while (nextNoteTime < now + SCHEDULE_AHEAD) {
         scheduleNote(nextNoteTime);
         nextNoteTime += NOTE_DUR_S;
@@ -347,7 +358,7 @@
     }
 
     function startSeq() {
-      nextNoteTime = performance.now() / 1000 + 0.05;
+      nextNoteTime = supersonic.audioContext.currentTime + 0.05;
       degreeIndex = 0;
       seqRunning = true;
       tick();
@@ -356,10 +367,7 @@
     function stopSeq() {
       seqRunning = false;
       clearTimeout(seqTimer);
-      if (pendingRelease) {
-        releaseNote(pendingRelease.id);
-        pendingRelease = null;
-      }
+      supersonic.cancelAll(); // flush any bundles not yet dispatched to scsynth
     }
 
     // ---------------------------------------------------------------------------
