@@ -6,7 +6,8 @@
 
 import * as THREE from "three";
 
-import { BAND } from "./config.js";
+import { BAND, PYLONS } from "./config.js";
+import { createPylons } from "./pylon.js";
 
 // Background: dark, calm green-tinted near-black. Bright lime (#D2FF72) is
 // reserved for later accents (connections / halos) and is NOT used here.
@@ -22,7 +23,7 @@ const BAND_CENTER_Y = (BAND.min + BAND.max) / 2;
  * Build the static scene and bind it to a canvas.
  *
  * @param {HTMLCanvasElement} canvas - the full-window canvas to render into.
- * @returns {{ start: () => void, dispose: () => void }}
+ * @returns {{ start: () => void, dispose: () => void, pylons: import("./pylon.js").Pylon[] }}
  */
 export function createScene(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -59,6 +60,11 @@ export function createScene(canvas) {
   keyLight.position.set(-5, 10, 7);
   scene.add(keyLight);
 
+  // One pylon per config entry, placed at its [x, z] slot and resting at
+  // mid-band. Interaction + MIDI (later milestones) drive their heights via the
+  // Pylon get/set API.
+  const pylons = createPylons(scene, PYLONS);
+
   function resize() {
     const width = window.innerWidth;
     const height = window.innerHeight;
@@ -85,10 +91,11 @@ export function createScene(canvas) {
       frameId = 0;
     }
     window.removeEventListener("resize", resize);
+    for (const pylon of pylons) pylon.dispose();
     ground.geometry.dispose();
     ground.material.dispose();
     renderer.dispose();
   }
 
-  return { start, dispose };
+  return { start, dispose, pylons };
 }
