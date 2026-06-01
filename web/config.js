@@ -25,3 +25,8 @@ export const PYLONS = [
 // Fixed FM routing for the connection lines (drawn in bright lime #D2FF72).
 // Static depiction of the algorithm only — no value/depth encoding.
 export const CONNECTIONS = [["M1", "c2"], ["M1", "M2"], ["M2", "c1"]];
+
+// The pylon `cc`s above are also the contract with the in-page SuperSonic synth
+// (supersonic.js): each `cc` selects the FM parameter that pylon drives, via the
+// engine's exported PARAM_DEFS table. cc 1..4 → m1Ratio / m2Ratio / c1Ratio /
+// c2Ratio. No extra config is needed here.

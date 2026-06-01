@@ -56,8 +56,17 @@ export function createMidi({ pylons, entries, container = document.body }) {
   let access = null;
   /** @type {MIDIOutput | null} */
   let output = null;
+  // Whether the MIDI sink is active. Starts on, so existing behaviour (auto-send
+  // once a port is selected) is unchanged; the user can toggle it off to drive
+  // only the in-page SuperCollider sink (supersonic.js).
+  let enabled = true;
 
-  const ui = buildUI(container);
+  const ui = buildUI(container, enabled, (on) => {
+    enabled = on;
+    // Force a full refresh on the next tick when re-enabled.
+    for (const ch of channels) ch.lastValue = null;
+    refreshStatus();
+  });
 
   /**
    * Select an output port by id and reset throttle state so the new port gets a
@@ -72,6 +81,10 @@ export function createMidi({ pylons, entries, container = document.body }) {
   }
 
   function refreshStatus() {
+    if (!enabled) {
+      ui.setStatus("MIDI: disabled");
+      return;
+    }
     if (!access) {
       ui.setStatus("MIDI: no access");
       return;
@@ -115,7 +128,7 @@ export function createMidi({ pylons, entries, container = document.body }) {
    * before access is granted (it is a no-op until an output is selected).
    */
   function tick() {
-    if (!output) return;
+    if (!enabled || !output) return;
     for (const ch of channels) {
       const value = clampCC(Math.round(ch.pylon.getNormalized() * 127));
       if (value === ch.lastValue) continue;
@@ -158,19 +171,18 @@ export function createMidi({ pylons, entries, container = document.body }) {
 }
 
 /**
- * Build the minimal overlay UI: a status line and a port <select>. Returns a
- * small controller used by createMidi to update it.
+ * Build the minimal overlay UI: a status line, an enable checkbox, and a port
+ * <select>. Returns a small controller used by createMidi to update it.
+ * Positioning is owned by the shared container passed in (see main.js).
  *
  * @param {HTMLElement} container
+ * @param {boolean} initialEnabled
+ * @param {(on: boolean) => void} onToggle - invoked with the checkbox state.
  */
-function buildUI(container) {
+function buildUI(container, initialEnabled, onToggle) {
   const root = document.createElement("div");
   root.className = "midi-overlay";
   Object.assign(root.style, {
-    position: "fixed",
-    top: "12px",
-    right: "12px",
-    zIndex: "10",
     font: "13px system-ui, sans-serif",
     color: "#d2ff72",
     background: "rgba(10, 20, 16, 0.85)",
@@ -184,6 +196,24 @@ function buildUI(container) {
   status.className = "midi-status";
   status.textContent = "MIDI: connecting…";
   status.style.marginBottom = "8px";
+
+  // Enable toggle: lets the user drive only the in-page SuperCollider sink.
+  const enable = document.createElement("label");
+  Object.assign(enable.style, {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    cursor: "pointer",
+    marginBottom: "8px",
+  });
+  const enableBox = document.createElement("input");
+  enableBox.type = "checkbox";
+  enableBox.checked = initialEnabled;
+  enableBox.addEventListener("change", () => onToggle(enableBox.checked));
+  const enableText = document.createElement("span");
+  enableText.textContent = "MIDI output";
+  enable.appendChild(enableBox);
+  enable.appendChild(enableText);
 
   const label = document.createElement("label");
   label.textContent = "Output port";
@@ -211,6 +241,7 @@ function buildUI(container) {
   label.appendChild(document.createElement("br"));
   label.appendChild(select);
   root.appendChild(status);
+  root.appendChild(enable);
   root.appendChild(label);
   container.appendChild(root);
 
