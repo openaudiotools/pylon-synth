@@ -23,7 +23,7 @@ const BAND_CENTER_Y = (BAND.min + BAND.max) / 2;
  * Build the static scene and bind it to a canvas.
  *
  * @param {HTMLCanvasElement} canvas - the full-window canvas to render into.
- * @returns {{ start: () => void, dispose: () => void, pylons: import("./pylon.js").Pylon[], camera: THREE.Camera, canvas: HTMLCanvasElement }}
+ * @returns {{ start: () => void, dispose: () => void, onFrame: (cb: () => void) => void, pylons: import("./pylon.js").Pylon[], camera: THREE.Camera, canvas: HTMLCanvasElement }}
  */
 export function createScene(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -75,9 +75,17 @@ export function createScene(canvas) {
   resize();
   window.addEventListener("resize", resize);
 
+  // Per-frame callbacks (e.g. MIDI dispatch) run before each render. Kept here
+  // so the render loop owns a single requestAnimationFrame for the whole app.
+  const frameCallbacks = [];
+  function onFrame(cb) {
+    frameCallbacks.push(cb);
+  }
+
   let frameId = 0;
   function renderLoop() {
     frameId = requestAnimationFrame(renderLoop);
+    for (const cb of frameCallbacks) cb();
     renderer.render(scene, camera);
   }
 
@@ -99,5 +107,5 @@ export function createScene(canvas) {
 
   // Expose the camera and canvas so interaction (M3) can raycast against the
   // pylons; expose the pylons themselves for grab targets + their value getter.
-  return { start, dispose, pylons, camera, canvas };
+  return { start, dispose, onFrame, pylons, camera, canvas };
 }
