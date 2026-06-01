@@ -71,3 +71,7 @@ c2 ← M1 → M2 → c1
 
 See [`docs/PLAN.md`](docs/PLAN.md) for the build plan and the project journal for
 design-decision history.
+
+## License
+
+[MIT](LICENSE).
