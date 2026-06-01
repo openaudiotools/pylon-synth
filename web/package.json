@@ -1,0 +1,11 @@
+{
+  "name": "pylon-synth-web",
+  "version": "1.0.0",
+  "description": "Buildless three.js control surface for pylon-synth; dispatches MIDI CC over the Web MIDI API.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^4.95.0"
+  }
+}
