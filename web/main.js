@@ -19,11 +19,12 @@ if (!canvas) {
 
 const scene = createScene(canvas);
 
-// Click-hold a pylon and drag up/down to set its height within the band.
+// Left-drag a pylon up/down to set its height; right-drag to orbit the camera.
 createInteraction({
   canvas: scene.canvas,
   camera: scene.camera,
   pylons: scene.pylons,
+  orbit: scene.orbit,
 });
 
 // FM-algorithm depiction: bright-lime lines linking the connected pylons.

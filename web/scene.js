@@ -1,8 +1,8 @@
-// scene.js — the static three.js stage the pylons will later sit on.
+// scene.js — the three.js stage the pylons sit on.
 //
-// This module owns only the empty scene: a WebGLRenderer, a FIXED camera
-// (no orbit controls) framing the play area, a ground plane, and lighting.
-// Pylon meshes, interaction, and MIDI are added in later milestones.
+// This module owns the scene: a WebGLRenderer, a camera (default framing set
+// here; right-drag orbit is driven via the exposed orbit() callback), the
+// pylon guide rails, a ground plane, and lighting.
 
 import * as THREE from "three";
 
@@ -49,6 +49,30 @@ export function createScene(canvas) {
   camera.position.copy(pivotCenter).add(new THREE.Vector3().setFromSpherical(camSpherical));
   camera.position.y *= 0.85; // lower the camera 15%, still looking at the band centre
   camera.lookAt(pivotCenter);
+
+  // Orbit state: the camera's spherical coords relative to the pivot. Seeded
+  // from the current (lowered) position so the default framing is preserved
+  // exactly, and updated by orbit() on right-drag (see interaction.js).
+  const orbitSpherical = new THREE.Spherical().setFromVector3(
+    new THREE.Vector3().subVectors(camera.position, pivotCenter),
+  );
+
+  /**
+   * Rotate the camera around the band centre by the given spherical deltas
+   * (radians), keeping its distance and look-at target. Elevation is clamped so
+   * the view can't flip over the top or dip below the band.
+   * @param {number} dTheta - azimuth delta.
+   * @param {number} dPhi - elevation (polar) delta.
+   */
+  function orbit(dTheta, dPhi) {
+    orbitSpherical.theta += dTheta;
+    orbitSpherical.phi = THREE.MathUtils.clamp(orbitSpherical.phi + dPhi, 0.2, 1.5);
+    orbitSpherical.makeSafe();
+    camera.position
+      .copy(pivotCenter)
+      .add(new THREE.Vector3().setFromSpherical(orbitSpherical));
+    camera.lookAt(pivotCenter);
+  }
 
   // Ground plane the pylons stand on (y = 0). Rotated flat (XZ plane).
   const ground = new THREE.Mesh(
@@ -147,5 +171,5 @@ export function createScene(canvas) {
   // Expose the camera and canvas so interaction (M3) can raycast against the
   // pylons; expose the pylons themselves for grab targets + their value getter;
   // expose the scene so connection lines (M5) can be added to it.
-  return { start, dispose, onFrame, scene, pylons, camera, canvas };
+  return { start, dispose, onFrame, orbit, scene, pylons, camera, canvas };
 }
