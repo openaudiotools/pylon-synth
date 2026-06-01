@@ -16,10 +16,10 @@ export const BAND = { min: 1, max: 6 };
 // #15B392); with 4 pylons one color repeats — M1 and c2 intentionally share
 // #73EC8B per docs/IMPLEMENTATION.md (palette, not an identity signal).
 export const PYLONS = [
-  { id: "M1", role: "modulator", cc: 1, position: [-3, 0, 0], color: "#73EC8B" },
-  { id: "M2", role: "modulator", cc: 2, position: [-1, 0, 0], color: "#54C392" },
-  { id: "c1", role: "carrier",   cc: 3, position: [ 1, 0, 0], color: "#15B392" },
-  { id: "c2", role: "carrier",   cc: 4, position: [ 3, 0, 0], color: "#73EC8B" },
+  { id: "M1", role: "modulator", cc: 1, position: [-1, 0, 3], color: "#73EC8B" },
+  { id: "M2", role: "modulator", cc: 2, position: [-3, 0, -1], color: "#54C392" },
+  { id: "c1", role: "carrier",   cc: 3, position: [ 1, 0, -2], color: "#15B392" },
+  { id: "c2", role: "carrier",   cc: 4, position: [ 3, 0, 2], color: "#73EC8B" },
 ];
 
 // Fixed FM routing for the connection lines (drawn in bright lime #D2FF72).

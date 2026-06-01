@@ -32,16 +32,21 @@ export class Pylon {
   /**
    * @param {object} entry - a `config.PYLONS` entry.
    * @param {string} entry.id - operator id (e.g. "M1").
-   * @param {[number, number, number]} entry.position - [x, y, z] ground slot;
-   *   only x and z are used for placement (y is driven by the band).
+   * @param {[number, number, number]} entry.position - [x, y, z]. x and z set
+   *   the ground slot. y sets the starting height when it falls within the band
+   *   y ∈ [BAND.min, BAND.max]; otherwise the pylon starts at mid-band. Height
+   *   is still driven by drag/MIDI after load.
    * @param {string} entry.color - green surface color from the palette.
    */
   constructor(entry) {
     this.id = entry.id;
 
-    const [x, , z] = entry.position;
+    const [x, y, z] = entry.position;
     this._x = x;
     this._z = z;
+    // Use the config Y as the resting height if it's a sensible in-band value,
+    // else fall back to mid-band (keeps entries with y outside the band, e.g. 0).
+    this._initialY = y >= BAND.min && y <= BAND.max ? y : MID_BAND_Y;
 
     const surface = new THREE.MeshStandardMaterial({
       color: new THREE.Color(entry.color),
@@ -121,7 +126,7 @@ export class Pylon {
     // Place at ground slot and lift to the resting mid-band height.
     group.position.x = this._x;
     group.position.z = this._z;
-    this.setHeight(MID_BAND_Y);
+    this.setHeight(this._initialY);
   }
 
   /**

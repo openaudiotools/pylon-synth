@@ -33,11 +33,21 @@ export function createScene(canvas) {
   scene.background = new THREE.Color(BACKGROUND_COLOR);
 
   // Fixed camera: a single static framing showing all 4 pylon slots and the
-  // full vertical band. It looks slightly down at the band centre and never
-  // moves (no orbit) so vertical-drag interaction stays unambiguous.
+  // full vertical band. It looks at the band centre and never moves (no orbit)
+  // so vertical-drag interaction stays unambiguous.
+  //
+  // Base framing is straight-on from +Z, slightly above the band centre. We
+  // then pivot the camera around the centre: 30° left (azimuth) and 20° up
+  // (elevation), keeping the same distance and look-at target.
   const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
-  camera.position.set(0, BAND_CENTER_Y + 1.5, 12);
-  camera.lookAt(0, BAND_CENTER_Y, 0);
+  const pivotCenter = new THREE.Vector3(0, BAND_CENTER_Y, 0);
+  const camOffset = new THREE.Vector3(0, 1.5, 12); // base position relative to centre
+  const camSpherical = new THREE.Spherical().setFromVector3(camOffset);
+  camSpherical.theta -= THREE.MathUtils.degToRad(30); // 30° left
+  camSpherical.phi -= THREE.MathUtils.degToRad(20); // 20° up (smaller polar angle = higher)
+  camSpherical.makeSafe();
+  camera.position.copy(pivotCenter).add(new THREE.Vector3().setFromSpherical(camSpherical));
+  camera.lookAt(pivotCenter);
 
   // Ground plane the pylons stand on (y = 0). Rotated flat (XZ plane).
   const ground = new THREE.Mesh(
