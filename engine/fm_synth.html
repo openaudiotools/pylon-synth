@@ -203,6 +203,9 @@
       baseURL: "https://unpkg.com/supersonic-scsynth@latest/dist/",
       coreBaseURL: "https://unpkg.com/supersonic-scsynth-core@latest/",
       debug: true,
+      scsynthOptions: {
+        realTimeMemorySize: 65536, // 64MB — required for JPverb delay network
+      },
     });
 
     const statusEl = document.getElementById('status');
@@ -215,9 +218,21 @@
       try {
         await supersonic.init();
 
-        statusEl.textContent = 'engine: loading synthdef…';
-        const bytes = await fetch('fm.scsyndef').then(r => r.arrayBuffer());
-        await supersonic.loadSynthDef(bytes);
+        statusEl.textContent = 'engine: loading synthdefs…';
+        const [fmBytes, reverbBytes] = await Promise.all([
+          fetch('fm.scsyndef').then(r => r.arrayBuffer()),
+          fetch('reverb.scsyndef').then(r => r.arrayBuffer()),
+        ]);
+        await Promise.all([
+          supersonic.loadSynthDef(fmBytes),
+          supersonic.loadSynthDef(reverbBytes),
+        ]);
+
+        // Spawn one persistent reverb synth at the tail of the root group.
+        // FM voices write to bus 16; reverb reads bus 16 and outputs to 0.
+        const reverbId = supersonic.nextNodeId();
+        supersonic.send('/s_new', 'reverb', reverbId, 1, 0,
+          'bus', 16, 'mix', 0.5, 'room', 0.8, 'damp', 0.5);
 
         engineReady = true;
         statusEl.textContent = 'engine: ready';
@@ -275,7 +290,7 @@
     // ---------------------------------------------------------------------------
     // Lookahead scheduler — 135 BPM, 0.5-beat notes
     // ---------------------------------------------------------------------------
-    const BPM = 135;
+    const BPM = 125;
     const DUR_BEATS = 0.5;
     const NOTE_DUR_S = (60 / BPM) * DUR_BEATS;
     const LOOKAHEAD_MS = 50;
@@ -288,7 +303,8 @@
     let pendingRelease = null; // { id, releaseAt }
 
     function scheduleNote(wallTime) {
-      const degree = DEGREES[degreeIndex % DEGREES.length];
+      let degree = DEGREES[degreeIndex % DEGREES.length];
+      if (Math.random() < 0.3) degree += Math.floor(Math.random() * 3) + 1;
       degreeIndex++;
 
       const freq = degreeToFreq(degree);

@@ -1,4 +1,15 @@
 (
+SynthDef.new(\reverb, {
+  arg bus = 16, mix = 0.5, room = 0.8, damp = 0.5;
+
+  var in, wet;
+  in = In.ar(bus, 2);
+  wet = FreeVerb2.ar(in[0], in[1], mix, room, damp);
+  Out.ar(0, wet);
+}).writeDefFile(PathName(thisProcess.nowExecutingPath).pathOnly);
+)
+
+(
 SynthDef.new(\fm, {
   arg freq = 440, gate = 1,
       m1Ratio = 1.0, m2Ratio = 2.0, c1Ratio = 1.0, c2Ratio = 1.0,
@@ -18,8 +29,8 @@ SynthDef.new(\fm, {
 
   sig = (c1 + c2) * 0.5 * env * amp;
 
-  Out.ar(~main, sig ! 2);
-}).add;
+  Out.ar(16, sig ! 2);
+}).writeDefFile(PathName(thisProcess.nowExecutingPath).pathOnly);
 )
 
 t =TempoClock(135/60).permanent_(true);
