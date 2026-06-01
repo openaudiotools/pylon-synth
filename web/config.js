@@ -12,6 +12,9 @@ export const MIDI_CHANNEL = 0;
 export const BAND = { min: 1, max: 6 };
 
 // One pylon per FM operator. `cc` is the contract with the SuperCollider side.
+// Surface colors are drawn from the 3-color green palette (#73EC8B / #54C392 /
+// #15B392); with 4 pylons one color repeats — M1 and c2 intentionally share
+// #73EC8B per docs/IMPLEMENTATION.md (palette, not an identity signal).
 export const PYLONS = [
   { id: "M1", role: "modulator", cc: 1, position: [-3, 0, 0], color: "#73EC8B" },
   { id: "M2", role: "modulator", cc: 2, position: [-1, 0, 0], color: "#54C392" },
