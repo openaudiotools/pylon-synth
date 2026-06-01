@@ -6,5 +6,9 @@
 import { createScene } from "./scene.js";
 
 const canvas = document.getElementById("scene");
+if (!canvas) {
+  throw new Error("Canvas element with id='scene' not found");
+}
+
 const scene = createScene(canvas);
 scene.start();
