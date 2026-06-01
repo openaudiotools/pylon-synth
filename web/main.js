@@ -9,6 +9,7 @@ import { createInteraction } from "./interaction.js";
 import { createConnections } from "./connections.js";
 import { createMidi } from "./midi.js";
 import { createSupersonic } from "./supersonic.js";
+import { createReadout } from "./readout.js";
 import { PYLONS } from "./config.js";
 
 const canvas = document.getElementById("scene");
@@ -58,5 +59,9 @@ const supersonic = createSupersonic({
   container: outputs,
 });
 scene.onFrame(supersonic.tick);
+
+// Live readout: labels + current values for the pylon-driven FM ratios.
+const readout = createReadout({ pylons: scene.pylons, entries: PYLONS });
+scene.onFrame(readout.tick);
 
 scene.start();

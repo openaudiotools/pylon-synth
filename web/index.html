@@ -45,6 +45,42 @@
         margin: 0;
         opacity: 0.8;
       }
+      /* Footer: GitHub author + repo links. Same palette as the overlays. */
+      .footer-overlay {
+        position: fixed;
+        bottom: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font: 12px system-ui, sans-serif;
+        color: #d2ff72;
+        background: rgba(10, 20, 16, 0.85);
+        border: 1px solid rgba(210, 255, 114, 0.35);
+        border-radius: 999px;
+        padding: 5px 12px 5px 5px;
+      }
+      .footer-overlay a {
+        color: #d2ff72;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .footer-overlay a:hover {
+        text-decoration: underline;
+      }
+      .footer-overlay img {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: block;
+      }
+      .footer-overlay .sep {
+        opacity: 0.4;
+      }
     </style>
     <!-- Buildless: three.js from a pinned CDN version via an import map. -->
     <script type="importmap">
@@ -61,6 +97,22 @@
       <h1>pylon-synth</h1>
       <p>Click and hold a pylon, drag up/down.</p>
     </div>
+    <footer class="footer-overlay">
+      <a href="https://github.com/dannyZyg" target="_blank" rel="noopener">
+        <img
+          src="https://avatars.githubusercontent.com/u/6018440?v=4&size=64"
+          alt="dannyZyg"
+        />
+        dannyZyg
+      </a>
+      <span class="sep">·</span>
+      <a
+        href="https://github.com/openaudiotools/pylon-synth"
+        target="_blank"
+        rel="noopener"
+        >repo</a
+      >
+    </footer>
     <script type="module" src="./main.js"></script>
   </body>
 </html>
