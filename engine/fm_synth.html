@@ -204,19 +204,30 @@
       coreBaseURL: "https://unpkg.com/supersonic-scsynth-core@latest/",
       debug: true,
       scsynthOptions: {
-        realTimeMemorySize: 65536, // 64MB — required for JPverb delay network
+        realTimeMemorySize: 16536,
       },
     });
 
     const statusEl = document.getElementById('status');
 
     let engineReady = false;
+    let correctedInitTime = 0;
 
     async function bootEngine() {
       statusEl.textContent = 'engine: booting…';
       statusEl.className = 'loading';
       try {
         await supersonic.init();
+
+        // Chrome suspends the AudioContext until a user gesture, so
+        // supersonic.initTime is captured *before* currentTime starts
+        // advancing. Recalibrate here — now that the context is running —
+        // using the live wall clock vs. current AudioContext time so that
+        // every NTP timetag we send lands in the future, not the past.
+        const NTP_EPOCH_OFFSET = 2208988800; // seconds between 1900 and 1970
+        correctedInitTime =
+          (Date.now() / 1000 + NTP_EPOCH_OFFSET) -
+          supersonic.audioContext.currentTime;
 
         statusEl.textContent = 'engine: loading synthdefs…';
         const [fmBytes, reverbBytes] = await Promise.all([
@@ -265,13 +276,19 @@
     //   triggerNote sends /s_new inside a timetag'd bundle so scsynth defers
     //   playback to the exact sample. releaseNote does the same for /n_set.
     //   No setTimeout is used for any audio event — all timing lives in scsynth.
+    //
+    //   activeNodes tracks live node IDs so that incoming MIDI CC changes can be
+    //   forwarded immediately to in-flight voices via /n_set.
     // ---------------------------------------------------------------------------
     const {osc} = SuperSonic;
 
+    const activeNodes = new Set();
+
     // Convert an AudioContext timestamp to an NTP timetag (seconds since 1900).
-    // supersonic.initTime is the NTP time at which the AudioContext clock was zero.
+    // correctedInitTime is recalibrated after engine boot to account for the
+    // gap Chrome introduces by suspending the AudioContext before a user gesture.
     function audioCtxToNtp(t) {
-      return supersonic.initTime + t;
+      return correctedInitTime + t;
     }
 
     function triggerNote(freq, audioCtxTime, p) {
@@ -280,21 +297,22 @@
         audioCtxToNtp(audioCtxTime),
         '/s_new',
         ['fm', id, 0, 0,
-         'freq', freq,
-         'm1Ratio', p.m1Ratio,
-         'm2Ratio', p.m2Ratio,
-         'c1Ratio', p.c1Ratio,
-         'c2Ratio', p.c2Ratio,
-         'm1Index', p.m1Index,
-         'm2Index', p.m2Index,
-         'atk', p.atk,
-         'rel', p.rel]
+          'freq', freq,
+          'm1Ratio', p.m1Ratio,
+          'm2Ratio', p.m2Ratio,
+          'c1Ratio', p.c1Ratio,
+          'c2Ratio', p.c2Ratio,
+          'm1Index', p.m1Index,
+          'm2Index', p.m2Index,
+          'atk', p.atk,
+          'rel', p.rel]
       );
       supersonic.sendOSC(bundle);
+      activeNodes.add(id);
       return id;
     }
 
-    function releaseNote(id, audioCtxTime) {
+    function releaseNote(id, audioCtxTime, relDur) {
       // Send release as a timetag'd bundle so scsynth schedules it sample-accurately.
       const bundle = osc.encodeSingleBundle(
         audioCtxToNtp(audioCtxTime),
@@ -302,7 +320,11 @@
         [id, 'gate', 0]
       );
       supersonic.sendOSC(bundle);
-      // synth self-frees via doneAction: 2 after the release ramp
+      // synth self-frees via doneAction: 2 after the release ramp;
+      // remove from activeNodes once the release has elapsed so stale IDs
+      // don't accumulate (adding a small buffer for safety).
+      const msUntilFree = (audioCtxTime - supersonic.audioContext.currentTime + relDur + 0.1) * 1000;
+      setTimeout(() => activeNodes.delete(id), Math.max(msUntilFree, 0));
     }
 
     // ---------------------------------------------------------------------------
@@ -325,7 +347,7 @@
 
     function fireNote(freq, audioCtxTime, dur, p) {
       const id = triggerNote(freq, audioCtxTime, p);
-      releaseNote(id, audioCtxTime + dur * 0.9);
+      releaseNote(id, audioCtxTime + dur * 0.9, p.rel);
     }
 
     function scheduleNote(audioCtxTime) {
@@ -342,7 +364,7 @@
         // ~25% chance: double note — degree then degree+1 in the same slot.
         // Both hits are pre-scheduled as bundles; no setTimeout needed.
         const halfDur = NOTE_DUR_S * 0.5;
-        fireNote(degreeToFreq(degree),     audioCtxTime,           halfDur, p);
+        fireNote(degreeToFreq(degree), audioCtxTime, halfDur, p);
         fireNote(degreeToFreq(degree + 1), audioCtxTime + halfDur, halfDur, p);
       } else {
         // ~75% chance: normal single note
@@ -422,6 +444,20 @@
       const s = sliderMap[key];
       s.input.value = norm(v, min, max) * 1000;
       s.valueEl.textContent = fmt(v);
+
+      // Forward the change to any currently-sounding voices so timbre updates
+      // are heard immediately rather than waiting for the next scheduled note.
+      if (activeNodes.size > 0 && engineReady) {
+        const now = supersonic.audioContext.currentTime;
+        activeNodes.forEach(id => {
+          const bundle = osc.encodeSingleBundle(
+            audioCtxToNtp(now),
+            '/n_set',
+            [id, key, v]
+          );
+          supersonic.sendOSC(bundle);
+        });
+      }
     }
 
     const midiStatus = document.getElementById('midi-status');
