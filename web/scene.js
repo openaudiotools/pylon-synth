@@ -23,7 +23,7 @@ const BAND_CENTER_Y = (BAND.min + BAND.max) / 2;
  * Build the static scene and bind it to a canvas.
  *
  * @param {HTMLCanvasElement} canvas - the full-window canvas to render into.
- * @returns {{ start: () => void, dispose: () => void, onFrame: (cb: () => void) => void, pylons: import("./pylon.js").Pylon[], camera: THREE.Camera, canvas: HTMLCanvasElement }}
+ * @returns {{ start: () => void, dispose: () => void, onFrame: (cb: () => void) => void, scene: THREE.Scene, pylons: import("./pylon.js").Pylon[], camera: THREE.Camera, canvas: HTMLCanvasElement }}
  */
 export function createScene(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -106,6 +106,7 @@ export function createScene(canvas) {
   }
 
   // Expose the camera and canvas so interaction (M3) can raycast against the
-  // pylons; expose the pylons themselves for grab targets + their value getter.
-  return { start, dispose, onFrame, pylons, camera, canvas };
+  // pylons; expose the pylons themselves for grab targets + their value getter;
+  // expose the scene so connection lines (M5) can be added to it.
+  return { start, dispose, onFrame, scene, pylons, camera, canvas };
 }

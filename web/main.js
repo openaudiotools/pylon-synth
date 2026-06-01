@@ -6,6 +6,7 @@
 
 import { createScene } from "./scene.js";
 import { createInteraction } from "./interaction.js";
+import { createConnections } from "./connections.js";
 import { createMidi } from "./midi.js";
 import { PYLONS } from "./config.js";
 
@@ -22,6 +23,12 @@ createInteraction({
   camera: scene.camera,
   pylons: scene.pylons,
 });
+
+// FM-algorithm depiction: bright-lime lines linking the connected pylons.
+// Static (no value/depth encoding); `update()` runs each frame so the lines
+// follow the pylons' waist positions as they are dragged vertically.
+const connections = createConnections(scene.scene, scene.pylons);
+scene.onFrame(connections.update);
 
 // Web MIDI: port picker + status overlay + throttled CC dispatch. `tick()` runs
 // each frame and only sends a pylon's CC when its integer value changes.
