@@ -47,6 +47,7 @@ export function createScene(canvas) {
   camSpherical.phi -= THREE.MathUtils.degToRad(20); // 20° up (smaller polar angle = higher)
   camSpherical.makeSafe();
   camera.position.copy(pivotCenter).add(new THREE.Vector3().setFromSpherical(camSpherical));
+  camera.position.y *= 0.85; // lower the camera 15%, still looking at the band centre
   camera.lookAt(pivotCenter);
 
   // Ground plane the pylons stand on (y = 0). Rotated flat (XZ plane).
@@ -69,6 +70,32 @@ export function createScene(canvas) {
   const keyLight = new THREE.DirectionalLight(0xffffff, 1.0);
   keyLight.position.set(-5, 10, 7);
   scene.add(keyLight);
+
+  // Vertical guide rails: a faint line at each pylon's centre axis, from the
+  // ground (y = 0) up to the top of the band (BAND.max), depicting each pylon's
+  // full travel range. Static furniture — drawn independently of the pylon
+  // groups (which translate vertically as they're dragged). One LineSegments
+  // holds all rails (two vertices each) for a single draw call.
+  const railPositions = new Float32Array(PYLONS.length * 2 * 3);
+  PYLONS.forEach((entry, i) => {
+    const [x, , z] = entry.position;
+    const base = i * 6;
+    railPositions[base + 0] = x;
+    railPositions[base + 1] = 0;
+    railPositions[base + 2] = z;
+    railPositions[base + 3] = x;
+    railPositions[base + 4] = BAND.max;
+    railPositions[base + 5] = z;
+  });
+  const railGeometry = new THREE.BufferGeometry();
+  railGeometry.setAttribute("position", new THREE.BufferAttribute(railPositions, 3));
+  const railMaterial = new THREE.LineBasicMaterial({
+    color: 0xd2ff72,
+    transparent: true,
+    opacity: 0.18,
+  });
+  const rails = new THREE.LineSegments(railGeometry, railMaterial);
+  scene.add(rails);
 
   // One pylon per config entry, placed at its [x, z] slot and resting at
   // mid-band. Interaction + MIDI (later milestones) drive their heights via the
@@ -110,6 +137,8 @@ export function createScene(canvas) {
     }
     window.removeEventListener("resize", resize);
     for (const pylon of pylons) pylon.dispose();
+    railGeometry.dispose();
+    railMaterial.dispose();
     ground.geometry.dispose();
     ground.material.dispose();
     renderer.dispose();
