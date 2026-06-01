@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Pylon Synth — SuperSonic</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: #1a1a1a;
+      color: #e0e0e0;
+      font-family: monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 16px;
+      min-height: 100vh;
+    }
+
+    h1 {
+      font-size: 1.1rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #888;
+      margin-bottom: 24px;
+    }
+
+    #controls {
+      width: 420px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .param-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .param-label {
+      width: 80px;
+      font-size: 0.75rem;
+      color: #aaa;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    input[type="range"] {
+      flex: 1;
+      accent-color: #5af;
+      cursor: pointer;
+    }
+
+    .param-value {
+      width: 52px;
+      font-size: 0.75rem;
+      color: #5af;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    #transport {
+      margin-top: 24px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    button {
+      background: #2a2a2a;
+      border: 1px solid #444;
+      color: #e0e0e0;
+      font-family: monospace;
+      font-size: 0.85rem;
+      padding: 8px 20px;
+      cursor: pointer;
+      letter-spacing: 0.08em;
+    }
+
+    button:hover {
+      background: #333;
+      border-color: #5af;
+      color: #5af;
+    }
+
+    button.active {
+      background: #1a3a4a;
+      border-color: #5af;
+      color: #5af;
+    }
+
+    #status {
+      font-size: 0.7rem;
+      color: #555;
+    }
+
+    #status.ready {
+      color: #5a5;
+    }
+
+    #status.error {
+      color: #a55;
+    }
+
+    #status.loading {
+      color: #aa5;
+    }
+
+    #midi-status {
+      font-size: 0.7rem;
+      color: #555;
+    }
+
+    #midi-status.connected {
+      color: #5a5;
+    }
+
+    #midi-status.error {
+      color: #a55;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Pylon Synth</h1>
+
+  <div id="controls"></div>
+
+  <div id="transport">
+    <button id="playBtn">Play</button>
+    <span id="status">engine: idle</span>
+    <span id="midi-status">MIDI: —</span>
+  </div>
+
+  <script type="module">
+    import {SuperSonic} from "https://unpkg.com/supersonic-scsynth@latest";
+
+    // ---------------------------------------------------------------------------
+    // Parameter definitions  [key, label, min, max, default, cc]
+    // ---------------------------------------------------------------------------
+    const PARAM_DEFS = [
+      ['m1Ratio', 'M1 Ratio', 0.25, 8.0, 1.0, 1],
+      ['m2Ratio', 'M2 Ratio', 0.25, 8.0, 2.0, 2],
+      ['c1Ratio', 'C1 Ratio', 0.25, 8.0, 1.0, 3],
+      ['c2Ratio', 'C2 Ratio', 0.25, 8.0, 1.0, 4],
+      ['m1Index', 'M1 Index', 0.0, 10.0, 1.0, 5],
+      ['m2Index', 'M2 Index', 0.0, 10.0, 1.0, 6],
+      ['atk', 'Attack', 0.001, 2.0, 0.01, 7],
+      ['rel', 'Release', 0.01, 4.0, 0.5, 8],
+    ];
+
+    const params = {};
+    PARAM_DEFS.forEach(([key, , , , def]) => params[key] = def);
+
+    // ---------------------------------------------------------------------------
+    // Build slider UI
+    // ---------------------------------------------------------------------------
+    const sliderMap = {};
+
+    const controlsEl = document.getElementById('controls');
+    PARAM_DEFS.forEach(([key, label, min, max, def]) => {
+      const row = document.createElement('div');
+      row.className = 'param-row';
+
+      const lbl = document.createElement('span');
+      lbl.className = 'param-label';
+      lbl.textContent = label;
+
+      const input = document.createElement('input');
+      input.type = 'range';
+      input.min = 0; input.max = 1000;
+      input.value = norm(def, min, max) * 1000;
+
+      const valueEl = document.createElement('span');
+      valueEl.className = 'param-value';
+      valueEl.textContent = fmt(def);
+
+      input.addEventListener('input', () => {
+        const v = denorm(input.value / 1000, min, max);
+        params[key] = v;
+        valueEl.textContent = fmt(v);
+      });
+
+      row.append(lbl, input, valueEl);
+      controlsEl.appendChild(row);
+      sliderMap[key] = {input, valueEl, min, max};
+    });
+
+    function norm(v, min, max) {return (v - min) / (max - min);}
+    function denorm(n, min, max) {return min + n * (max - min);}
+    function fmt(v) {return v < 10 ? v.toFixed(2) : v.toFixed(1);}
+
+    // ---------------------------------------------------------------------------
+    // SuperSonic setup
+    // ---------------------------------------------------------------------------
+    const supersonic = new SuperSonic({
+      baseURL: "https://unpkg.com/supersonic-scsynth@latest/dist/",
+      coreBaseURL: "https://unpkg.com/supersonic-scsynth-core@latest/",
+      debug: true,
+    });
+
+    const statusEl = document.getElementById('status');
+
+    let engineReady = false;
+
+    async function bootEngine() {
+      statusEl.textContent = 'engine: booting…';
+      statusEl.className = 'loading';
+      try {
+        await supersonic.init();
+
+        statusEl.textContent = 'engine: loading synthdef…';
+        const bytes = await fetch('fm.scsyndef').then(r => r.arrayBuffer());
+        await supersonic.loadSynthDef(bytes);
+
+        engineReady = true;
+        statusEl.textContent = 'engine: ready';
+        statusEl.className = 'ready';
+      } catch (err) {
+        statusEl.textContent = `engine: error — ${err.message}`;
+        statusEl.className = 'error';
+        console.error(err);
+        throw err;
+      }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Minor scale / sequencer helpers (identical to pylon_synth.html)
+    // ---------------------------------------------------------------------------
+    const MINOR_SCALE = [0, 2, 3, 5, 7, 8, 10];
+    const DEGREES = [0, 2, 4, 5, 8, 9, 11];
+    const ROOT_MIDI = 69; // A4
+
+    function degreeToFreq(degree) {
+      const octave = Math.floor(degree / MINOR_SCALE.length);
+      const semitones = MINOR_SCALE[((degree % MINOR_SCALE.length) + MINOR_SCALE.length) % MINOR_SCALE.length];
+      const midi = ROOT_MIDI + octave * 12 + semitones;
+      return 440 * Math.pow(2, (midi - 69) / 12);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Voice management via scsynth
+    //
+    //   /s_new "fm" id 0 0 freq <f> m1Ratio <v> ...
+    //   /n_set id gate 0   → releases envelope → doneAction:2 self-frees
+    // ---------------------------------------------------------------------------
+    function triggerNote(freq, p) {
+      const id = supersonic.nextNodeId();
+      supersonic.send(
+        '/s_new', 'fm', id, 0, 0,
+        'freq', freq,
+        'm1Ratio', p.m1Ratio,
+        'm2Ratio', p.m2Ratio,
+        'c1Ratio', p.c1Ratio,
+        'c2Ratio', p.c2Ratio,
+        'm1Index', p.m1Index,
+        'm2Index', p.m2Index,
+        'atk', p.atk,
+        'rel', p.rel
+      );
+      return id;
+    }
+
+    function releaseNote(id) {
+      supersonic.send('/n_set', id, 'gate', 0);
+      // synth self-frees via doneAction: 2 after the release ramp
+    }
+
+    // ---------------------------------------------------------------------------
+    // Lookahead scheduler — 135 BPM, 0.5-beat notes
+    // ---------------------------------------------------------------------------
+    const BPM = 135;
+    const DUR_BEATS = 0.5;
+    const NOTE_DUR_S = (60 / BPM) * DUR_BEATS;
+    const LOOKAHEAD_MS = 50;
+    const SCHEDULE_AHEAD = 0.1; // seconds
+
+    let seqRunning = false;
+    let seqTimer = null;
+    let nextNoteTime = 0;   // wall-clock (performance.now() / 1000)
+    let degreeIndex = 0;
+    let pendingRelease = null; // { id, releaseAt }
+
+    function scheduleNote(wallTime) {
+      const degree = DEGREES[degreeIndex % DEGREES.length];
+      degreeIndex++;
+
+      const freq = degreeToFreq(degree);
+      const p = {...params};
+
+      // Release the previous note if it hasn't been released yet
+      if (pendingRelease) {
+        releaseNote(pendingRelease.id);
+        pendingRelease = null;
+      }
+
+      const id = triggerNote(freq, p);
+
+      // Schedule release just before next note
+      const releaseAt = wallTime + NOTE_DUR_S * 0.9;
+      pendingRelease = {id, releaseAt};
+
+      setTimeout(() => {
+        releaseNote(id);
+        if (pendingRelease && pendingRelease.id === id) pendingRelease = null;
+      }, (releaseAt - performance.now() / 1000) * 1000);
+    }
+
+    function tick() {
+      const now = performance.now() / 1000;
+      while (nextNoteTime < now + SCHEDULE_AHEAD) {
+        scheduleNote(nextNoteTime);
+        nextNoteTime += NOTE_DUR_S;
+      }
+      seqTimer = setTimeout(tick, LOOKAHEAD_MS);
+    }
+
+    function startSeq() {
+      nextNoteTime = performance.now() / 1000 + 0.05;
+      degreeIndex = 0;
+      seqRunning = true;
+      tick();
+    }
+
+    function stopSeq() {
+      seqRunning = false;
+      clearTimeout(seqTimer);
+      if (pendingRelease) {
+        releaseNote(pendingRelease.id);
+        pendingRelease = null;
+      }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Play / Stop button — boots engine on first press
+    // ---------------------------------------------------------------------------
+    const playBtn = document.getElementById('playBtn');
+    let booting = false;
+
+    playBtn.addEventListener('click', async () => {
+      if (seqRunning) {
+        stopSeq();
+        playBtn.textContent = 'Play';
+        playBtn.classList.remove('active');
+        return;
+      }
+
+      if (!engineReady) {
+        if (booting) return;
+        booting = true;
+        playBtn.disabled = true;
+        try {
+          await bootEngine();
+        } catch {
+          playBtn.disabled = false;
+          booting = false;
+          return;
+        }
+        playBtn.disabled = false;
+        booting = false;
+      }
+
+      startSeq();
+      playBtn.textContent = 'Stop';
+      playBtn.classList.add('active');
+    });
+
+    // ---------------------------------------------------------------------------
+    // Web MIDI — CC 1–8 → params
+    // ---------------------------------------------------------------------------
+    const CC_MAP = {};
+    PARAM_DEFS.forEach(([key, , , , , cc]) => CC_MAP[cc] = key);
+
+    function applyCC(ccNum, val127) {
+      const key = CC_MAP[ccNum];
+      if (!key) return;
+      const def = PARAM_DEFS.find(p => p[0] === key);
+      const [, , min, max] = def;
+      const v = denorm(val127 / 127, min, max);
+      params[key] = v;
+      const s = sliderMap[key];
+      s.input.value = norm(v, min, max) * 1000;
+      s.valueEl.textContent = fmt(v);
+    }
+
+    const midiStatus = document.getElementById('midi-status');
+
+    if (navigator.requestMIDIAccess) {
+      navigator.requestMIDIAccess().then(access => {
+        midiStatus.textContent = 'MIDI: connected';
+        midiStatus.className = 'connected';
+
+        function connectInputs() {
+          access.inputs.forEach(input => {
+            input.onmidimessage = ({data}) => {
+              const [status, cc, val] = data;
+              if ((status & 0xf0) === 0xb0) applyCC(cc, val);
+            };
+          });
+        }
+
+        connectInputs();
+        access.onstatechange = connectInputs;
+      }).catch(() => {
+        midiStatus.textContent = 'MIDI: permission denied';
+        midiStatus.className = 'error';
+      });
+    } else {
+      midiStatus.textContent = 'MIDI: not supported';
+      midiStatus.className = 'error';
+    }
+  </script>
+</body>
+
+</html>
