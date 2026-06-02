@@ -1,0 +1,18 @@
+---
+// Document shell for the pylon-synth control surface. The global stylesheet is
+// imported here (not scoped) so the html/body/#scene/.overlay selectors stay
+// global, exactly as the old inline <style> did.
+import "../styles/global.css";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>pylon-synth</title>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

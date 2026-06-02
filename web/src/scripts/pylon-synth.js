@@ -97,8 +97,8 @@ export class PylonSynth {
       this._status('engine: loading synthdefs…', 'loading');
 
       const [fmBytes, reverbBytes] = await Promise.all([
-        fetch('fm.scsyndef').then(r => r.arrayBuffer()),
-        fetch('reverb.scsyndef').then(r => r.arrayBuffer()),
+        fetch('/fm.scsyndef').then(r => r.arrayBuffer()),
+        fetch('/reverb.scsyndef').then(r => r.arrayBuffer()),
       ]);
       await Promise.all([
         this._supersonic.loadSynthDef(fmBytes),
