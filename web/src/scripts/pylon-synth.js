@@ -1,4 +1,4 @@
-import { SuperSonic } from "https://unpkg.com/supersonic-scsynth@latest";
+import { SuperSonic } from "https://unpkg.com/supersonic-scsynth@0.67.2";
 
 // ---------------------------------------------------------------------------
 // Parameter definitions  [key, label, min, max, default, cc]
@@ -49,8 +49,8 @@ export class PylonSynth {
 
     // Synth engine
     this._supersonic = new SuperSonic({
-      baseURL:     "https://unpkg.com/supersonic-scsynth@latest/dist/",
-      coreBaseURL: "https://unpkg.com/supersonic-scsynth-core@latest/",
+      baseURL:     "https://unpkg.com/supersonic-scsynth@0.67.2/dist/",
+      coreBaseURL: "https://unpkg.com/supersonic-scsynth-core@0.67.2/",
       debug: true,
       scsynthOptions: { realTimeMemorySize: 16536 },
     });
@@ -97,8 +97,8 @@ export class PylonSynth {
       this._status('engine: loading synthdefs…', 'loading');
 
       const [fmBytes, reverbBytes] = await Promise.all([
-        fetch('fm.scsyndef').then(r => r.arrayBuffer()),
-        fetch('reverb.scsyndef').then(r => r.arrayBuffer()),
+        fetch('/fm.scsyndef').then(r => r.arrayBuffer()),
+        fetch('/reverb.scsyndef').then(r => r.arrayBuffer()),
       ]);
       await Promise.all([
         this._supersonic.loadSynthDef(fmBytes),

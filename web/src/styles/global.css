@@ -1,0 +1,76 @@
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #0a1410;
+}
+#scene {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
+/* Title + one-line help overlay. Mirrors the MIDI overlay's palette
+   (bright lime on translucent green-black) so the UI reads as one set. */
+.title-overlay {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+  font: 13px system-ui, sans-serif;
+  color: #d2ff72;
+  background: rgba(10, 20, 16, 0.85);
+  border: 1px solid rgba(210, 255, 114, 0.35);
+  border-radius: 8px;
+  padding: 10px 12px;
+  max-width: 260px;
+  pointer-events: none;
+  user-select: none;
+}
+.title-overlay h1 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.title-overlay p {
+  margin: 0;
+  opacity: 0.8;
+}
+/* Footer: GitHub author + repo links. Same palette as the overlays. */
+.footer-overlay {
+  position: fixed;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 12px system-ui, sans-serif;
+  color: #d2ff72;
+  background: rgba(10, 20, 16, 0.85);
+  border: 1px solid rgba(210, 255, 114, 0.35);
+  border-radius: 999px;
+  padding: 5px 12px 5px 5px;
+}
+.footer-overlay a {
+  color: #d2ff72;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.footer-overlay a:hover {
+  text-decoration: underline;
+}
+.footer-overlay img {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: block;
+}
+.footer-overlay .sep {
+  opacity: 0.4;
+}
