@@ -1,5 +1,5 @@
-// pylon.js — the pylon visual: a bicone (spinning-top) body, a torus
-// "connector ring" at the waist, and a halo.
+// pylon.js — the pylon visual: a bicone (spinning-top) body and a torus
+// "connector ring" at the waist.
 //
 // A pylon is a parameter-agnostic control object: its only state that matters
 // later is its *height* (Y position within the band). Interaction (M3) and MIDI
@@ -8,9 +8,9 @@
 
 import * as THREE from "three";
 
-import { BAND } from "./config.js";
+import { BAND, PLAY_HALF } from "./config.js";
 
-// Bright lime accent, reserved for the connector ring + halo (per palette).
+// Bright lime accent, reserved for the connector ring (per palette).
 const ACCENT_COLOR = 0xd2ff72;
 
 // Mid-band resting height: pylons start centred in y ∈ [BAND.min, BAND.max].
@@ -91,35 +91,17 @@ export class Pylon {
     ring.rotation.x = Math.PI / 2;
     group.add(ring);
 
-    // Halo: an emissive flat ring behind/around the waist, bright lime. Kept
-    // double-sided and unlit (MeshBasicMaterial) so it glows regardless of the
-    // scene lighting, evoking a sprite-like halo without a texture.
-    const halo = new THREE.Mesh(
-      new THREE.RingGeometry(WAIST_RADIUS + 0.25, WAIST_RADIUS + 0.5, 48),
-      new THREE.MeshBasicMaterial({
-        color: ACCENT_COLOR,
-        transparent: true,
-        opacity: 0.35,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      }),
-    );
-    group.add(halo);
-
     this.object3d = group;
     // Track owned resources for disposal.
-    this._meshes = [upperCone, lowerCone, ring, halo];
+    this._meshes = [upperCone, lowerCone, ring];
 
     // References used by interaction (M3): grabbed-state visual feedback.
     this._ring = ring;
-    this._halo = halo;
     // Resting (un-grabbed) values, restored on release.
     this._restRingEmissive = ring.material.emissiveIntensity;
-    this._restHaloOpacity = halo.material.opacity;
 
     // Raycast targets, each back-referencing this Pylon so a mesh hit can be
-    // mapped to its owner (see interaction.js). The halo is excluded: it is a
-    // transparent, depthWrite:false sprite-like ring and not a grab target.
+    // mapped to its owner (see interaction.js).
     this.pickTargets = [upperCone, lowerCone, ring];
     for (const mesh of this.pickTargets) mesh.userData.pylon = this;
 
@@ -149,6 +131,30 @@ export class Pylon {
   }
 
   /**
+   * Current ground slot (X/Z, in metres). Height is tracked separately by
+   * `getHeight`; this is the position on the XZ plane the pylon was dragged to.
+   * @returns {{ x: number, z: number }}
+   */
+  getGroundPosition() {
+    return { x: this._x, z: this._z };
+  }
+
+  /**
+   * Move the pylon on the XZ ground plane, clamped to the play area
+   * x,z ∈ [-PLAY_HALF, PLAY_HALF]. Height (Y) is unchanged.
+   * @param {number} x - desired X in metres.
+   * @param {number} z - desired Z in metres.
+   * @returns {{ x: number, z: number }} the clamped position actually applied.
+   */
+  setGroundPosition(x, z) {
+    this._x = Math.min(PLAY_HALF, Math.max(-PLAY_HALF, x));
+    this._z = Math.min(PLAY_HALF, Math.max(-PLAY_HALF, z));
+    this.object3d.position.x = this._x;
+    this.object3d.position.z = this._z;
+    return { x: this._x, z: this._z };
+  }
+
+  /**
    * Normalized height in [0, 1]: `(y - BAND.min) / (BAND.max - BAND.min)`.
    *
    * This is the parameter-agnostic value downstream MIDI (M4) consumes — it
@@ -161,15 +167,14 @@ export class Pylon {
   }
 
   /**
-   * Toggle grabbed-state visual feedback: while grabbed, the connector ring and
-   * halo brighten/intensify; on release they return to their resting look.
+   * Toggle grabbed-state visual feedback: while grabbed, the connector ring
+   * brightens; on release it returns to its resting look.
    * @param {boolean} grabbed
    */
   setGrabbed(grabbed) {
     this._ring.material.emissiveIntensity = grabbed
       ? 1.4
       : this._restRingEmissive;
-    this._halo.material.opacity = grabbed ? 0.85 : this._restHaloOpacity;
   }
 
   /** Release GPU resources owned by this pylon. */

@@ -1,6 +1,6 @@
 // main.js — bootstrap entry loaded by index.html.
 //
-// Wires the canvas to the scene, enables click-hold vertical drag (M3), starts
+// Wires the canvas to the scene, enables click-hold pylon drag (M3), starts
 // MIDI dispatch (M4), and starts the render loop. MIDI reads each pylon's
 // normalized value via `Pylon.getNormalized()` and emits CC on integer change.
 
@@ -19,7 +19,8 @@ if (!canvas) {
 
 const scene = createScene(canvas);
 
-// Left-drag a pylon up/down to set its height; right-drag to orbit the camera.
+// Left-drag a pylon to move it on the ground; right-drag a pylon to set its
+// height; right-drag empty space to orbit the camera.
 createInteraction({
   canvas: scene.canvas,
   camera: scene.camera,
@@ -29,7 +30,7 @@ createInteraction({
 
 // FM-algorithm depiction: bright-lime lines linking the connected pylons.
 // Static (no value/depth encoding); `update()` runs each frame so the lines
-// follow the pylons' waist positions as they are dragged vertically.
+// follow the pylons' waist positions as they are dragged (on the ground or in Y).
 const connections = createConnections(scene.scene, scene.pylons);
 scene.onFrame(connections.update);
 

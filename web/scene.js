@@ -97,22 +97,13 @@ export function createScene(canvas) {
 
   // Vertical guide rails: a faint line at each pylon's centre axis, from the
   // ground (y = 0) up to the top of the band (BAND.max), depicting each pylon's
-  // full travel range. Static furniture — drawn independently of the pylon
-  // groups (which translate vertically as they're dragged). One LineSegments
-  // holds all rails (two vertices each) for a single draw call.
+  // full travel range. One LineSegments holds all rails (two vertices each) for
+  // a single draw call. The X/Z of each rail follows its pylon as it's dragged
+  // on the ground plane (see updateRails, registered on frame below).
   const railPositions = new Float32Array(PYLONS.length * 2 * 3);
-  PYLONS.forEach((entry, i) => {
-    const [x, , z] = entry.position;
-    const base = i * 6;
-    railPositions[base + 0] = x;
-    railPositions[base + 1] = 0;
-    railPositions[base + 2] = z;
-    railPositions[base + 3] = x;
-    railPositions[base + 4] = BAND.max;
-    railPositions[base + 5] = z;
-  });
   const railGeometry = new THREE.BufferGeometry();
-  railGeometry.setAttribute("position", new THREE.BufferAttribute(railPositions, 3));
+  const railPositionAttr = new THREE.BufferAttribute(railPositions, 3);
+  railGeometry.setAttribute("position", railPositionAttr);
   const railMaterial = new THREE.LineBasicMaterial({
     color: 0xd2ff72,
     transparent: true,
@@ -123,8 +114,25 @@ export function createScene(canvas) {
 
   // One pylon per config entry, placed at its [x, z] slot and resting at
   // mid-band. Interaction + MIDI (later milestones) drive their heights via the
-  // Pylon get/set API.
+  // Pylon get/set API. `pylons[i]` corresponds 1:1 to `PYLONS[i]`.
   const pylons = createPylons(scene, PYLONS);
+
+  // Refresh each rail's X/Z from its pylon's live ground position (base at the
+  // ground, top at BAND.max), so rails track pylons dragged on the XZ plane.
+  function updateRails() {
+    for (let i = 0; i < pylons.length; i++) {
+      const { x, z } = pylons[i].getGroundPosition();
+      const base = i * 6;
+      railPositions[base + 0] = x;
+      railPositions[base + 1] = 0;
+      railPositions[base + 2] = z;
+      railPositions[base + 3] = x;
+      railPositions[base + 4] = BAND.max;
+      railPositions[base + 5] = z;
+    }
+    railPositionAttr.needsUpdate = true;
+  }
+  updateRails(); // seed before the first render
 
   function resize() {
     const width = window.innerWidth;
@@ -142,6 +150,9 @@ export function createScene(canvas) {
   function onFrame(cb) {
     frameCallbacks.push(cb);
   }
+
+  // Keep the guide rails under their pylons as they're dragged on the ground.
+  onFrame(updateRails);
 
   let frameId = 0;
   function renderLoop() {

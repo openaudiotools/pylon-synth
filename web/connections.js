@@ -109,7 +109,7 @@ export function createConnections(scene, pylons) {
   /**
    * Refresh every line endpoint from the connected pylons' current waist
    * positions, then advance each pulse sprite along its segment. Pylons move
-   * vertically during drag, so this must run each frame.
+   * on the XZ plane and in Y during drag, so this must run each frame.
    */
   function update() {
     const elapsed = (performance.now() - startTime) / 1000;

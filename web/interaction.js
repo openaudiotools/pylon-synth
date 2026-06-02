@@ -1,15 +1,19 @@
-// interaction.js — click-hold vertical drag + right-drag camera orbit (M3).
+// interaction.js — click-hold pylon drag + right-drag camera orbit (M3).
 //
 // PRIMARY button (left): grab a pylon on pointerdown (raycaster pick), then on
-// pointermove drag it vertically within the band; release on
-// pointerup/pointercancel. SECONDARY button (right): drag to orbit the camera
-// around the band centre via the scene's orbit() callback. The two are
-// arbitrated by event.button so they never fight over the same drag.
+// pointermove drag it on the XZ ground plane (Pylon.setGroundPosition); release
+// on pointerup/pointercancel.
+// SECONDARY button (right): if a pylon is under the cursor, drag it on the Y
+// axis / height (Pylon.setHeight); otherwise drag to orbit the camera around the
+// band centre via the scene's orbit() callback.
+// The buttons/targets are arbitrated in onPointerDown so the two never fight
+// over the same drag.
 //
-// Height mapping: while grabbed, the pointer ray is intersected with a vertical
-// plane through the grabbed pylon that faces the camera. The intersection's Y is
-// the target height (clamped by Pylon.setHeight to the band). This makes the
-// pylon track the cursor's world height directly under the current camera.
+// XZ mapping: the pointer ray is intersected with a horizontal plane at the
+// grabbed pylon's current height; the intersection's X/Z is the target slot.
+// Height mapping: the ray is intersected with a vertical plane through the pylon
+// that faces the camera; the intersection's Y is the target height. Either way
+// the pylon tracks the cursor under the current camera.
 
 import * as THREE from "three";
 
@@ -44,6 +48,8 @@ export function createInteraction({ canvas, camera, pylons, orbit }) {
   /** @type {import("./pylon.js").Pylon | null} */
   let grabbed = null;
   let activePointerId = null;
+  // Drag mode locked at pointerdown: "xz" (plain) or "height" (Shift held).
+  let dragMode = "xz";
 
   // Right-drag orbit state: the dragging pointer and its last screen position.
   let orbiting = false;
@@ -89,11 +95,49 @@ export function createInteraction({ canvas, camera, pylons, orbit }) {
     dragPlane.setFromNormalAndCoplanarPoint(planeNormal, point);
   }
 
+  // Build a horizontal plane (normal +Y) through `point`, so the ray reads an
+  // X/Z slot at the grabbed pylon's current height for an XZ-ground drag.
+  function setHorizontalPlane(point) {
+    planeNormal.set(0, 1, 0);
+    dragPlane.setFromNormalAndCoplanarPoint(planeNormal, point);
+  }
+
+  // Pick the pylon under the current pointer, or null. Assumes updatePointer +
+  // raycaster.setFromCamera were called for this event.
+  function pickPylon() {
+    const hits = raycaster.intersectObjects(pickTargets, false);
+    return hits.length ? hits[0].object.userData.pylon : null;
+  }
+
+  // Begin a pylon drag: lock the mode, set the matching drag plane, capture.
+  function grab(pylon, event, mode) {
+    grabbed = pylon;
+    activePointerId = event.pointerId;
+    dragMode = mode;
+    grabbed.setGrabbed(true);
+    if (mode === "height") {
+      setDragPlane(pylon.object3d.position); // vertical plane facing camera
+    } else {
+      setHorizontalPlane(pylon.object3d.position); // horizontal ground plane
+    }
+    capture(event.pointerId);
+    event.preventDefault();
+  }
+
   function onPointerDown(event) {
-    // Secondary button → orbit the camera (if enabled). Takes priority and
-    // never grabs a pylon, so right-clicking a pylon orbits rather than drags.
+    // Secondary button (right): drag a pylon on the Y axis (height) if one is
+    // under the cursor; otherwise orbit the camera.
     if (event.button === 2) {
-      if (!orbit || orbiting || grabbed) return;
+      if (orbiting || grabbed) return;
+      updatePointer(event);
+      raycaster.setFromCamera(pointer, camera);
+      const pylon = pickPylon();
+      if (pylon) {
+        grab(pylon, event, "height");
+        return;
+      }
+      // Empty space → orbit the camera (if enabled).
+      if (!orbit) return;
       orbiting = true;
       orbitPointerId = event.pointerId;
       lastX = event.clientX;
@@ -103,19 +147,12 @@ export function createInteraction({ canvas, camera, pylons, orbit }) {
       return;
     }
 
-    // Primary button only → grab a pylon.
+    // Primary button (left): drag a pylon on the XZ ground plane.
     if (event.button !== 0 || grabbed || orbiting) return;
     updatePointer(event);
     raycaster.setFromCamera(pointer, camera);
-    const hits = raycaster.intersectObjects(pickTargets, false);
-    if (hits.length === 0) return;
-
-    grabbed = hits[0].object.userData.pylon;
-    activePointerId = event.pointerId;
-    grabbed.setGrabbed(true);
-    setDragPlane(grabbed.object3d.position);
-    capture(event.pointerId);
-    event.preventDefault();
+    const pylon = pickPylon();
+    if (pylon) grab(pylon, event, "xz");
   }
 
   function onPointerMove(event) {
@@ -135,7 +172,11 @@ export function createInteraction({ canvas, camera, pylons, orbit }) {
     updatePointer(event);
     raycaster.setFromCamera(pointer, camera);
     if (raycaster.ray.intersectPlane(dragPlane, hitPoint)) {
-      grabbed.setHeight(hitPoint.y); // setHeight clamps to the band
+      if (dragMode === "height") {
+        grabbed.setHeight(hitPoint.y); // setHeight clamps to the band
+      } else {
+        grabbed.setGroundPosition(hitPoint.x, hitPoint.z); // clamps to play area
+      }
     }
     event.preventDefault();
   }

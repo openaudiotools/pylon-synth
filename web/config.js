@@ -11,6 +11,11 @@ export const MIDI_CHANNEL = 0;
 // Vertical band in metres; maps linearly across the full CC range (0..127).
 export const BAND = { min: 1, max: 6 };
 
+// Half-extent of the draggable ground area in metres. Pylons start within
+// x,z ∈ [-3, 3] and the ground plane is 40×40; this clamp keeps a dragged pylon
+// on visible ground and inside the camera framing.
+export const PLAY_HALF = 8;
+
 // One pylon per FM operator. `cc` is the contract with the SuperCollider side.
 // Surface color now encodes role: modulators are green, carriers are blue, so
 // the two operator kinds read apart at a glance (the bright-lime accent on the
