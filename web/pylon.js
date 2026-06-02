@@ -1,5 +1,5 @@
-// pylon.js — the pylon visual: a bicone (spinning-top) body and a torus
-// "connector ring" at the waist.
+// pylon.js — the pylon visual: a square bipyramid (spinning-top) body and a
+// torus "connector ring" at the waist.
 //
 // A pylon is a parameter-agnostic control object: its only state that matters
 // later is its *height* (Y position within the band). Interaction (M3) and MIDI
@@ -16,10 +16,11 @@ const ACCENT_COLOR = 0xd2ff72;
 // Mid-band resting height: pylons start centred in y ∈ [BAND.min, BAND.max].
 const MID_BAND_Y = (BAND.min + BAND.max) / 2;
 
-// Body proportions (world units = metres). The bicone is two cones joined at a
-// shared base radius — the "waist" — with the connector ring riding that waist.
-const WAIST_RADIUS = 0.45; // shared radius where the two cones meet
-const CONE_HEIGHT = 0.9; // height of each cone (total body ≈ 2 × this)
+// Body proportions (world units = metres). The bipyramid is two square pyramids
+// joined at a shared square base — the "waist" — with the connector ring riding
+// that waist. WAIST_RADIUS is the circumradius of the square (corner distance).
+const WAIST_RADIUS = 0.45; // circumradius of the square waist
+const PYRAMID_HEIGHT = 0.9; // height of each pyramid (total body ≈ 2 × this)
 const RING_TUBE = 0.08; // tube radius of the torus connector ring
 
 /**
@@ -58,24 +59,26 @@ export class Pylon {
     const group = new THREE.Group();
     group.name = `pylon:${entry.id}`;
 
-    // Bicone body: upper cone points up, lower cone points down, joined at the
-    // waist (y = 0 in the group's local frame). ConeGeometry's apex is +y and
-    // its base (radius) is −y, so the upper cone sits as-is and the lower cone
-    // is flipped 180° about x.
-    const upperCone = new THREE.Mesh(
-      new THREE.ConeGeometry(WAIST_RADIUS, CONE_HEIGHT, 32),
+    // Bipyramid body: upper pyramid points up, lower pyramid points down, joined
+    // at the square waist (y = 0 in the group's local frame). A 4-sided
+    // ConeGeometry is a square pyramid; three.js places a base corner toward +Z,
+    // so an edge faces the camera, giving the vertical ridge silhouette from the
+    // design. The apex is +y and the base is −y, so the upper pyramid sits as-is
+    // and the lower pyramid is flipped 180° about x.
+    const upperPyramid = new THREE.Mesh(
+      new THREE.ConeGeometry(WAIST_RADIUS, PYRAMID_HEIGHT, 4),
       surface,
     );
-    upperCone.position.y = CONE_HEIGHT / 2;
+    upperPyramid.position.y = PYRAMID_HEIGHT / 2;
 
-    const lowerCone = new THREE.Mesh(
-      new THREE.ConeGeometry(WAIST_RADIUS, CONE_HEIGHT, 32),
+    const lowerPyramid = new THREE.Mesh(
+      new THREE.ConeGeometry(WAIST_RADIUS, PYRAMID_HEIGHT, 4),
       surface,
     );
-    lowerCone.rotation.x = Math.PI;
-    lowerCone.position.y = -CONE_HEIGHT / 2;
+    lowerPyramid.rotation.x = Math.PI;
+    lowerPyramid.position.y = -PYRAMID_HEIGHT / 2;
 
-    group.add(upperCone, lowerCone);
+    group.add(upperPyramid, lowerPyramid);
 
     // Connector ring: a torus at the waist, lying in the horizontal plane.
     const ring = new THREE.Mesh(
@@ -93,7 +96,7 @@ export class Pylon {
 
     this.object3d = group;
     // Track owned resources for disposal.
-    this._meshes = [upperCone, lowerCone, ring];
+    this._meshes = [upperPyramid, lowerPyramid, ring];
 
     // References used by interaction (M3): grabbed-state visual feedback.
     this._ring = ring;
@@ -102,7 +105,7 @@ export class Pylon {
 
     // Raycast targets, each back-referencing this Pylon so a mesh hit can be
     // mapped to its owner (see interaction.js).
-    this.pickTargets = [upperCone, lowerCone, ring];
+    this.pickTargets = [upperPyramid, lowerPyramid, ring];
     for (const mesh of this.pickTargets) mesh.userData.pylon = this;
 
     // Place at ground slot and lift to the resting mid-band height.
