@@ -1,0 +1,57 @@
+name: Deploy
+
+# Auto-deploy the web/ control surface to Cloudflare Pages on every push to main.
+#
+# The pylon-synth Pages project is direct-upload (NOT git-integrated), so this
+# workflow runs `wrangler pages deploy` itself — the same thing `npm run deploy`
+# does locally. The project's production branch is `main`, so deploying with
+# `--branch main` updates production (pylon-synth.pages.dev / pylonsynth.xyz).
+#
+# Required repository secrets
+# (Settings -> Secrets and variables -> Actions):
+#   CLOUDFLARE_API_TOKEN   - a token with the "Cloudflare Pages: Edit" permission
+#   CLOUDFLARE_ACCOUNT_ID  - the Cloudflare account id that owns the project
+
+on:
+  push:
+    branches: [main]
+    # Only redeploy when the site or this workflow actually changes.
+    paths:
+      - "web/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch: {}
+
+# One deploy at a time; a newer push cancels an in-flight run.
+concurrency:
+  group: deploy-pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy to Cloudflare Pages
+        run: npx wrangler pages deploy ./dist --project-name pylon-synth --branch main
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
