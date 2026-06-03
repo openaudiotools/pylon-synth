@@ -10,8 +10,12 @@
 // "use Chrome/Edge" when the API is missing, and "no access" when the user
 // denies the permission prompt.
 
+import { createElement } from "react";
+import { createRoot } from "react-dom/client";
 import { MIDI_CHANNEL } from "./config.js";
 import { clampCC } from "./pylon-synth.js";
+import { createStore } from "@/lib/store";
+import { MidiPanel } from "@/components/overlays/MidiPanel";
 
 // MIDI Control Change status byte for the configured channel. 0xB0 is "CC on
 // channel 1"; OR-ing the channel index (0..15) selects the channel.
@@ -53,12 +57,18 @@ export function createMidi({ pylons, entries, container = document.body }) {
   // only the in-page SuperCollider sink (supersonic.js).
   let enabled = true;
 
-  const ui = buildUI(container, enabled, (on) => {
-    enabled = on;
-    // Force a full refresh on the next tick when re-enabled.
-    for (const ch of channels) ch.lastValue = null;
-    refreshStatus();
-  });
+  const ui = mountUI(
+    container,
+    enabled,
+    (on) => {
+      enabled = on;
+      ui.setEnabled(on);
+      // Force a full refresh on the next tick when re-enabled.
+      for (const ch of channels) ch.lastValue = null;
+      refreshStatus();
+    },
+    (id) => selectPort(id),
+  );
 
   /**
    * Select an output port by id and reset throttle state so the new port gets a
@@ -74,22 +84,22 @@ export function createMidi({ pylons, entries, container = document.body }) {
 
   function refreshStatus() {
     if (!enabled) {
-      ui.setStatus("MIDI: disabled");
+      ui.setStatus("MIDI: disabled", "secondary");
       return;
     }
     if (!access) {
-      ui.setStatus("MIDI: no access");
+      ui.setStatus("MIDI: no access", "error");
       return;
     }
     if (access.outputs.size === 0) {
-      ui.setStatus("MIDI: no ports");
+      ui.setStatus("MIDI: no ports", "warning");
       return;
     }
     if (!output) {
-      ui.setStatus("MIDI: select a port");
+      ui.setStatus("MIDI: select a port", "warning");
       return;
     }
-    ui.setStatus(`MIDI ready (${output.name || output.id})`);
+    ui.setStatus(`MIDI ready (${output.name || output.id})`, "success");
   }
 
   // Re-enumerate outputs into the picker, preserving the current selection when
@@ -97,7 +107,7 @@ export function createMidi({ pylons, entries, container = document.body }) {
   function refreshPorts() {
     if (!access) return;
     const outputs = [...access.outputs.values()];
-    ui.setPorts(outputs, (id) => selectPort(id));
+    ui.setPorts(outputs);
 
     if (output && access.outputs.has(output.id)) {
       // Keep the current valid selection.
@@ -135,7 +145,7 @@ export function createMidi({ pylons, entries, container = document.body }) {
     typeof navigator === "undefined" ||
     typeof navigator.requestMIDIAccess !== "function"
   ) {
-    ui.setStatus("MIDI unavailable — use Chrome or Edge");
+    ui.setStatus("MIDI unavailable — use Chrome or Edge", "error");
     ui.setUnsupported();
   } else {
     navigator
@@ -150,7 +160,7 @@ export function createMidi({ pylons, entries, container = document.body }) {
         // Permission denied (or otherwise unavailable).
         access = null;
         output = null;
-        ui.setStatus("MIDI: no access");
+        ui.setStatus("MIDI: no access", "error");
       });
   }
 
@@ -163,117 +173,58 @@ export function createMidi({ pylons, entries, container = document.body }) {
 }
 
 /**
- * Build the minimal overlay UI: a status line, an enable checkbox, and a port
- * <select>. Returns a small controller used by createMidi to update it.
- * Positioning is owned by the shared container passed in (see main.js).
+ * Mount the MIDI overlay (a COSS React panel) and return the imperative
+ * controller createMidi drives. The returned surface mirrors the old hand-rolled
+ * overlay so the factory body is unchanged, except `setPorts` no longer takes a
+ * pick callback (the panel receives `onPick` as a stable prop) and `setEnabled`
+ * keeps the controlled Switch in sync.
  *
  * @param {HTMLElement} container
  * @param {boolean} initialEnabled
- * @param {(on: boolean) => void} onToggle - invoked with the checkbox state.
+ * @param {(on: boolean) => void} onToggle - invoked with the toggle state.
+ * @param {(id: string) => void} onPick - invoked with the chosen port id.
  */
-function buildUI(container, initialEnabled, onToggle) {
-  const root = document.createElement("div");
-  root.className = "midi-overlay";
-  Object.assign(root.style, {
-    font: "13px system-ui, sans-serif",
-    color: "#d2ff72",
-    background: "rgba(10, 20, 16, 0.85)",
-    border: "1px solid rgba(210, 255, 114, 0.35)",
-    borderRadius: "8px",
-    padding: "10px 12px",
-    maxWidth: "260px",
+function mountUI(container, initialEnabled, onToggle, onPick) {
+  const store = createStore({
+    status: "MIDI: connecting…",
+    variant: "secondary",
+    enabled: initialEnabled,
+    ports: [],
+    selectedId: "",
+    unsupported: false,
   });
 
-  const status = document.createElement("div");
-  status.className = "midi-status";
-  status.textContent = "MIDI: connecting…";
-  status.style.marginBottom = "8px";
-
-  // Enable toggle: lets the user drive only the in-page SuperCollider sink.
-  const enable = document.createElement("label");
-  Object.assign(enable.style, {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    cursor: "pointer",
-    marginBottom: "8px",
-  });
-  const enableBox = document.createElement("input");
-  enableBox.type = "checkbox";
-  enableBox.checked = initialEnabled;
-  enableBox.addEventListener("change", () => onToggle(enableBox.checked));
-  const enableText = document.createElement("span");
-  enableText.textContent = "MIDI output";
-  enable.appendChild(enableBox);
-  enable.appendChild(enableText);
-
-  const label = document.createElement("label");
-  label.textContent = "Output port";
-  label.style.display = "block";
-  label.style.marginBottom = "4px";
-  label.style.opacity = "0.85";
-
-  const select = document.createElement("select");
-  Object.assign(select.style, {
-    width: "100%",
-    font: "inherit",
-    color: "#0a1410",
-    background: "#d2ff72",
-    border: "none",
-    borderRadius: "4px",
-    padding: "4px",
-  });
-
-  // Track current change-handler so we can swap it when ports re-enumerate.
-  let onPick = null;
-  select.addEventListener("change", () => {
-    if (onPick) onPick(select.value);
-  });
-
-  label.appendChild(document.createElement("br"));
-  label.appendChild(select);
-  root.appendChild(status);
-  root.appendChild(enable);
-  root.appendChild(label);
-  container.appendChild(root);
+  const host = document.createElement("div");
+  container.appendChild(host);
+  const root = createRoot(host);
+  root.render(createElement(MidiPanel, { store, onToggle, onPick }));
 
   return {
-    setStatus(text) {
-      status.textContent = text;
+    setStatus(text, variant) {
+      store.set({ status: text, variant });
+    },
+    setEnabled(on) {
+      store.set({ enabled: on });
     },
     /**
-     * Replace the port options. `pick` is invoked with the chosen port id.
+     * Replace the port options shown in the picker.
      * @param {MIDIOutput[]} outputs
-     * @param {(id: string) => void} pick
      */
-    setPorts(outputs, pick) {
-      onPick = pick;
-      select.replaceChildren();
-      if (outputs.length === 0) {
-        const opt = document.createElement("option");
-        opt.value = "";
-        opt.textContent = "(no MIDI outputs)";
-        select.appendChild(opt);
-        select.disabled = true;
-        return;
-      }
-      select.disabled = false;
-      for (const out of outputs) {
-        const opt = document.createElement("option");
-        opt.value = out.id;
-        opt.textContent = out.name || out.id;
-        select.appendChild(opt);
-      }
+    setPorts(outputs) {
+      store.set({
+        ports: outputs.map((out) => ({ id: out.id, name: out.name || out.id })),
+      });
     },
     setSelectedPort(id) {
-      select.value = id;
+      store.set({ selectedId: id });
     },
     // No outputs are possible at all (unsupported browser): hide the picker.
     setUnsupported() {
-      label.style.display = "none";
+      store.set({ unsupported: true });
     },
     dispose() {
-      root.remove();
+      root.unmount();
+      host.remove();
     },
   };
 }

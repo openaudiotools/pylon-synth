@@ -6,7 +6,11 @@
 // displayed value matches what the synth/MIDI sinks send: the same
 // CC 0..127 → [min, max] mapping, updated only when the integer CC changes.
 
+import { createElement } from "react";
+import { createRoot } from "react-dom/client";
 import { ccParamMap, clampCC } from "./pylon-synth.js";
+import { createStore } from "@/lib/store";
+import { ReadoutPanel } from "@/components/overlays/ReadoutPanel";
 
 // CC number → { key, label, min, max } from the engine's parameter table.
 const CC_PARAMS = ccParamMap();
@@ -26,7 +30,7 @@ export function createReadout({ pylons, entries, container = document.body }) {
     .map((pylon, i) => ({ pylon, param: CC_PARAMS.get(entries[i].cc) }))
     .filter((r) => r.param);
 
-  const ui = buildUI(container, rows.map((r) => r.param.label));
+  const ui = mountUI(container, rows.map((r) => r.param.label));
   const last = new Array(rows.length).fill(null);
 
   function tick() {
@@ -44,61 +48,30 @@ export function createReadout({ pylons, entries, container = document.body }) {
 }
 
 /**
- * Build the panel: one row per label, each with a value cell. Matches the other
- * overlays' palette. Returns setValue(rowIndex, text) + dispose.
+ * Mount the readout (a COSS React Card) and return a setValue(i, text)/dispose
+ * controller. Values update only when a pylon's integer CC changes (see tick),
+ * so the React panel re-renders infrequently despite the per-frame tick.
  *
  * @param {HTMLElement} container
  * @param {string[]} labels
  */
-function buildUI(container, labels) {
-  const root = document.createElement("div");
-  root.className = "readout-overlay";
-  Object.assign(root.style, {
-    position: "fixed",
-    bottom: "12px",
-    left: "12px",
-    zIndex: "10",
-    font: "13px system-ui, sans-serif",
-    color: "#d2ff72",
-    background: "rgba(10, 20, 16, 0.85)",
-    border: "1px solid rgba(210, 255, 114, 0.35)",
-    borderRadius: "8px",
-    padding: "10px 12px",
-    minWidth: "150px",
-    userSelect: "none",
-  });
+function mountUI(container, labels) {
+  const store = createStore({ values: labels.map(() => "—") });
 
-  const valueEls = labels.map((label) => {
-    const row = document.createElement("div");
-    Object.assign(row.style, {
-      display: "flex",
-      justifyContent: "space-between",
-      gap: "16px",
-      lineHeight: "1.6",
-    });
-
-    const name = document.createElement("span");
-    name.textContent = label;
-    name.style.opacity = "0.8";
-
-    const value = document.createElement("span");
-    value.textContent = "—";
-    value.style.fontVariantNumeric = "tabular-nums";
-
-    row.appendChild(name);
-    row.appendChild(value);
-    root.appendChild(row);
-    return value;
-  });
-
-  container.appendChild(root);
+  const host = document.createElement("div");
+  container.appendChild(host);
+  const root = createRoot(host);
+  root.render(createElement(ReadoutPanel, { labels, store }));
 
   return {
     setValue(i, text) {
-      if (valueEls[i]) valueEls[i].textContent = text;
+      const values = store.get().values.slice();
+      values[i] = text;
+      store.set({ values });
     },
     dispose() {
-      root.remove();
+      root.unmount();
+      host.remove();
     },
   };
 }

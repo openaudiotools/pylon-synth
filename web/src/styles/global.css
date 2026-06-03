@@ -1,3 +1,7 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
 html,
 body {
   margin: 0;
@@ -10,67 +14,285 @@ body {
   width: 100vw;
   height: 100vh;
 }
-/* Title + one-line help overlay. Mirrors the MIDI overlay's palette
-   (bright lime on translucent green-black) so the UI reads as one set. */
-.title-overlay {
-  position: fixed;
-  top: 12px;
-  left: 12px;
-  z-index: 10;
-  font: 13px system-ui, sans-serif;
-  color: #d2ff72;
-  background: rgba(10, 20, 16, 0.85);
-  border: 1px solid rgba(210, 255, 114, 0.35);
-  border-radius: 8px;
-  padding: 10px 12px;
-  max-width: 260px;
-  pointer-events: none;
-  user-select: none;
+/* The title, footer, and output overlays are COSS React components
+   (src/components/overlays/) styled with the tokens below. */
+
+@theme inline {
+  --animate-skeleton: skeleton 2s -1s infinite linear;
+  --animate-caret-blink: 1s ease-out infinite caret-blink;
+  --animate-toast-success-odd: toast-success-odd 0.32s cubic-bezier(0.5, 1, 0.89, 1);
+  --animate-toast-success-even: toast-success-even 0.32s cubic-bezier(0.5, 1, 0.89, 1);
+  --animate-toast-error-odd: toast-error-odd 0.28s cubic-bezier(0.5, 1, 0.89, 1);
+  --animate-toast-error-even: toast-error-even 0.28s cubic-bezier(0.5, 1, 0.89, 1);
+  --font-heading: system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: system-ui, sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar: var(--sidebar);
+  --color-code-highlight: var(--code-highlight);
+  --code-foreground: var(--code-foreground);
+  --color-code: var(--code);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-ring: var(--ring);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-input: var(--input);
+  --color-foreground: var(--foreground);
+  --color-destructive: var(--destructive);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-background: var(--background);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning: var(--warning);
+  --color-success-foreground: var(--success-foreground);
+  --color-success: var(--success);
+  --color-info-foreground: var(--info-foreground);
+  --color-info: var(--info);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+  @keyframes skeleton {
+  to {
+    background-position: -200% 0;
+    }
+  }
+  @keyframes caret-blink {
+  0%, 70%, to {
+    opacity: 1;
+    }
+  20%, 50% {
+    opacity: 0;
+    }
+  }
+  @keyframes toast-success-odd {
+  0% {
+    scale: 1;
+    }
+  30% {
+    scale: 1.025;
+    }
+  60% {
+    scale: 0.99;
+    }
+  100% {
+    scale: 1;
+    }
+  }
+  @keyframes toast-error-odd {
+  0% {
+    translate: 0 0;
+    }
+  25% {
+    translate: -3px 0;
+    }
+  50% {
+    translate: 3px 0;
+    }
+  75% {
+    translate: -3px 0;
+    }
+  100% {
+    translate: 0 0;
+    }
+  }
+  @keyframes toast-success-even {
+  0% {
+    scale: 1;
+    }
+  30% {
+    scale: 1.025;
+    }
+  60% {
+    scale: 0.99;
+    }
+  100% {
+    scale: 1;
+    }
+  }
+  @keyframes toast-error-even {
+  0% {
+    translate: 0 0;
+    }
+  25% {
+    translate: -3px 0;
+    }
+  50% {
+    translate: 3px 0;
+    }
+  75% {
+    translate: -3px 0;
+    }
+  100% {
+    translate: 0 0;
+    }
+  }
 }
-.title-overlay h1 {
-  margin: 0 0 4px;
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+
+:root {
+  --destructive-foreground: var(--color-red-700);
+  --info: var(--color-blue-500);
+  --info-foreground: var(--color-blue-700);
+  --success: var(--color-emerald-500);
+  --success-foreground: var(--color-emerald-700);
+  --warning: var(--color-amber-500);
+  --warning-foreground: var(--color-amber-700);
+  --accent: --alpha(var(--color-black) / 4%);
+  --accent-foreground: var(--color-neutral-800);
+  --background: var(--color-white);
+  --border: --alpha(var(--color-black) / 8%);
+  --card: var(--color-white);
+  --card-foreground: var(--color-neutral-800);
+  --destructive: var(--color-red-500);
+  --foreground: var(--color-neutral-800);
+  --input: --alpha(var(--color-black) / 10%);
+  --muted: --alpha(var(--color-black) / 4%);
+  --muted-foreground: color-mix(in srgb, var(--color-neutral-500) 90%, var(--color-black));
+  --popover: var(--color-white);
+  --popover-foreground: var(--color-neutral-800);
+  --primary: var(--color-neutral-800);
+  --primary-foreground: var(--color-neutral-50);
+  --ring: var(--color-neutral-400);
+  --secondary: --alpha(var(--color-black) / 4%);
+  --secondary-foreground: var(--color-neutral-800);
+  --chart-1: var(--color-orange-600);
+  --chart-2: var(--color-teal-600);
+  --chart-3: var(--color-cyan-900);
+  --chart-4: var(--color-amber-400);
+  --chart-5: var(--color-amber-500);
+  --code: var(--color-white);
+  --code-foreground: var(--foreground);
+  --code-highlight: --alpha(var(--color-black) / 4%);
+  --radius: 0.625rem;
+  --sidebar: var(--color-neutral-50);
+  --sidebar-accent: --alpha(var(--color-black) / 4%);
+  --sidebar-accent-foreground: var(--color-neutral-800);
+  --sidebar-border: --alpha(var(--color-black) / 6%);
+  --sidebar-foreground: color-mix(in srgb, var(--color-neutral-800) 64%, var(--sidebar));
+  --sidebar-primary: var(--color-neutral-800);
+  --sidebar-primary-foreground: var(--color-neutral-50);
+  --sidebar-ring: var(--color-neutral-400);
 }
-.title-overlay p {
-  margin: 0;
-  opacity: 0.8;
+
+.dark {
+  --destructive-foreground: var(--color-red-400);
+  --info: var(--color-blue-500);
+  --info-foreground: var(--color-blue-400);
+  --success: var(--color-emerald-500);
+  --success-foreground: var(--color-emerald-400);
+  --warning: var(--color-amber-500);
+  --warning-foreground: var(--color-amber-400);
+  --accent: --alpha(var(--color-white) / 4%);
+  --accent-foreground: var(--color-neutral-100);
+  --background: color-mix(in srgb, var(--color-neutral-950) 95%, var(--color-white));
+  --border: --alpha(var(--color-white) / 6%);
+  --card: color-mix(in srgb, var(--background) 98%, var(--color-white));
+  --card-foreground: var(--color-neutral-100);
+  --destructive: color-mix(in srgb, var(--color-red-500) 90%, var(--color-white));
+  --foreground: var(--color-neutral-100);
+  --input: --alpha(var(--color-white) / 8%);
+  --muted: --alpha(var(--color-white) / 4%);
+  --muted-foreground: color-mix(in srgb, var(--color-neutral-500) 90%, var(--color-white));
+  --popover: color-mix(in srgb, var(--background) 98%, var(--color-white));
+  --popover-foreground: var(--color-neutral-100);
+  --primary: var(--color-neutral-100);
+  --primary-foreground: var(--color-neutral-800);
+  --ring: var(--color-neutral-500);
+  --secondary: --alpha(var(--color-white) / 4%);
+  --secondary-foreground: var(--color-neutral-100);
+  --chart-1: var(--color-blue-700);
+  --chart-2: var(--color-emerald-500);
+  --chart-3: var(--color-amber-500);
+  --chart-4: var(--color-purple-500);
+  --chart-5: var(--color-rose-500);
+  --code: color-mix(in srgb, var(--background) 98%, var(--color-white));
+  --code-foreground: var(--foreground);
+  --code-highlight: --alpha(var(--color-white) / 4%);
+  --sidebar: color-mix(in srgb, var(--color-neutral-950) 97%, var(--color-white));
+  --sidebar-accent: --alpha(var(--color-white) / 4%);
+  --sidebar-accent-foreground: var(--color-neutral-100);
+  --sidebar-border: --alpha(var(--color-white) / 5%);
+  --sidebar-foreground: color-mix(in srgb, var(--color-neutral-100) 64%, var(--sidebar));
+  --sidebar-primary: var(--color-neutral-100);
+  --sidebar-primary-foreground: var(--color-neutral-800);
+  --sidebar-ring: var(--color-neutral-400);
 }
-/* Footer: GitHub author + repo links. Same palette as the overlays. */
-.footer-overlay {
-  position: fixed;
-  bottom: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font: 12px system-ui, sans-serif;
-  color: #d2ff72;
-  background: rgba(10, 20, 16, 0.85);
-  border: 1px solid rgba(210, 255, 114, 0.35);
-  border-radius: 999px;
-  padding: 5px 12px 5px 5px;
+
+/* --------------------------------------------------------------------------
+   pylon-synth palette — dark-only. Bright lime (#d2ff72) on dark green-black
+   (#0a1410), matching the three.js scene (scene.js BACKGROUND_COLOR /
+   ACCENT_COLOR, pylon.js ring, connections.js lines) and the original
+   overlays. Overrides the COSS default neutral tokens above for both :root
+   (so the page is dark before hydration) and .dark (so COSS components'
+   dark: variants resolve to the same palette). The app has no light mode.
+   -------------------------------------------------------------------------- */
+:root,
+.dark {
+  --background: #0a1410;
+  --foreground: #d2ff72;
+  --card: rgba(10, 20, 16, 0.85);
+  --card-foreground: #d2ff72;
+  --popover: rgba(12, 22, 17, 0.97);
+  --popover-foreground: #d2ff72;
+  --primary: #d2ff72;
+  --primary-foreground: #0a1410;
+  --secondary: rgba(210, 255, 114, 0.12);
+  --secondary-foreground: #d2ff72;
+  --accent: rgba(210, 255, 114, 0.16);
+  --accent-foreground: #d2ff72;
+  --muted: rgba(210, 255, 114, 0.06);
+  --muted-foreground: rgba(210, 255, 114, 0.7);
+  --border: rgba(210, 255, 114, 0.35);
+  --input: rgba(210, 255, 114, 0.35);
+  --ring: #d2ff72;
+  /* Status colors. The saturated value (--success) is for solid fills; the
+     -foreground is the readable text on COSS's tinted badge backgrounds
+     (bg-success/16 etc.), so it must stay a bright color, not the dark bg. */
+  --success: #6eeb83;
+  --success-foreground: #7ef29a;
+  --warning: #f5d76e;
+  --warning-foreground: #f5d76e;
+  --destructive: #ff6b6b;
+  --destructive-foreground: #ff9d9d;
+  --info: #4fb6e8;
+  --info-foreground: #7cc9ee;
+  --radius: 0.5rem;
 }
-.footer-overlay a {
-  color: #d2ff72;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.footer-overlay a:hover {
-  text-decoration: underline;
-}
-.footer-overlay img {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  display: block;
-}
-.footer-overlay .sep {
-  opacity: 0.4;
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  code, kbd, samp, pre {
+    font-family: var(--font-mono);
+  }
+  html {
+    @apply font-sans font-mono;
+  }
 }

@@ -17,12 +17,30 @@
 // button: first press boots the engine and starts the sequence; pressing again
 // stops it.
 
+import { createElement } from "react";
+import { createRoot } from "react-dom/client";
 import { PylonSynth, ccParamMap, clampCC } from "./pylon-synth.js";
+import { createStore } from "@/lib/store";
+import { SupersonicPanel } from "@/components/overlays/SupersonicPanel";
 
 // CC number → { key, label, min, max } from the engine's parameter table. This
 // is the contract shared with the SuperCollider side (and config.js's pylon
 // `cc`s); this sink ignores `label`.
 const CC_PARAMS = ccParamMap();
+
+// Map the engine's status className onto a COSS Badge variant.
+function statusVariant(className) {
+  switch (className) {
+    case "ready":
+      return "success";
+    case "loading":
+      return "warning";
+    case "error":
+      return "error";
+    default:
+      return "secondary";
+  }
+}
 
 /**
  * Build the in-page synth sink: a status line + Play/Stop button, plus a frame
@@ -43,12 +61,12 @@ export function createSupersonic({ pylons, entries, container = document.body })
     .filter((ch) => ch.param);
 
   const synth = new PylonSynth({
-    onStatus: (message) => ui.setStatus(message),
+    onStatus: (message, className) => ui.setStatus(message, className),
   });
 
   let booting = false;
 
-  const ui = buildUI(container, () => onPlayToggle());
+  const ui = mountUI(container, () => onPlayToggle());
 
   function resetThrottle() {
     for (const ch of channels) ch.lastValue = null;
@@ -105,64 +123,40 @@ export function createSupersonic({ pylons, entries, container = document.body })
 }
 
 /**
- * Build the minimal overlay: a status line and a Play/Stop button. Matches the
- * MIDI overlay's palette so the two read as one set of controls.
+ * Mount the SuperSonic overlay (a COSS React panel) into `container` and return
+ * the imperative controller the factory drives. The returned surface matches
+ * the old hand-rolled overlay (setStatus/setPlaying/setBusy/dispose) so the
+ * factory body is unchanged.
  *
  * @param {HTMLElement} container
  * @param {() => void} onPlay - invoked when the Play/Stop button is clicked.
  */
-function buildUI(container, onPlay) {
-  const root = document.createElement("div");
-  root.className = "supersonic-overlay";
-  Object.assign(root.style, {
-    font: "13px system-ui, sans-serif",
-    color: "#d2ff72",
-    background: "rgba(10, 20, 16, 0.85)",
-    border: "1px solid rgba(210, 255, 114, 0.35)",
-    borderRadius: "8px",
-    padding: "10px 12px",
-    maxWidth: "260px",
+function mountUI(container, onPlay) {
+  const store = createStore({
+    status: "synth: idle",
+    variant: "secondary",
+    playing: false,
+    busy: false,
   });
 
-  const status = document.createElement("div");
-  status.className = "supersonic-status";
-  status.textContent = "synth: idle";
-  status.style.marginBottom = "8px";
-
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = "▶ Play synth";
-  Object.assign(button.style, {
-    width: "100%",
-    font: "inherit",
-    color: "#0a1410",
-    background: "#d2ff72",
-    border: "none",
-    borderRadius: "4px",
-    padding: "6px",
-    cursor: "pointer",
-    letterSpacing: "0.04em",
-  });
-  button.addEventListener("click", onPlay);
-
-  root.appendChild(status);
-  root.appendChild(button);
-  container.appendChild(root);
+  const host = document.createElement("div");
+  container.appendChild(host);
+  const root = createRoot(host);
+  root.render(createElement(SupersonicPanel, { store, onPlay }));
 
   return {
-    setStatus(t) {
-      status.textContent = t;
+    setStatus(text, className) {
+      store.set({ status: text, variant: statusVariant(className) });
     },
     setPlaying(on) {
-      button.textContent = on ? "■ Stop synth" : "▶ Play synth";
+      store.set({ playing: on });
     },
     setBusy(busy) {
-      button.disabled = busy;
-      button.style.opacity = busy ? "0.6" : "1";
-      button.style.cursor = busy ? "default" : "pointer";
+      store.set({ busy });
     },
     dispose() {
-      root.remove();
+      root.unmount();
+      host.remove();
     },
   };
 }

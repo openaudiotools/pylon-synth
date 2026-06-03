@@ -1,5 +1,8 @@
 import { defineConfig } from "astro/config";
 
+import react from "@astrojs/react";
+import tailwindcss from "@tailwindcss/vite";
+
 // Phase-1 Astro wrap of the (formerly buildless) pylon-synth control surface.
 // - `output: "static"` — no SSR adapter; Cloudflare Pages serves dist/ as static.
 // - `three` is now bundled by Vite from node_modules (pinned to 0.160.0); the old
@@ -11,9 +14,13 @@ import { defineConfig } from "astro/config";
 export default defineConfig({
   output: "static",
   site: "https://pylonsynth.xyz",
+
   vite: {
+    plugins: [tailwindcss()],
     optimizeDeps: {
       exclude: ["supersonic-scsynth"],
     },
   },
+
+  integrations: [react()],
 });
