@@ -8,7 +8,7 @@ export function TitleOverlay() {
         pylon-synth
       </h1>
       <p className="text-muted-foreground text-xs">
-        Drag a pylon up/down · right-drag to orbit.
+        Drag a pylon up/down · right-drag to orbit · double-click for details.
       </p>
     </Card>
   );

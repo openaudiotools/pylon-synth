@@ -5,6 +5,10 @@
 // pylon guide rails, a ground plane, and lighting.
 
 import * as THREE from "three";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { BokehPass } from "three/addons/postprocessing/BokehPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 
 import { BAND, PYLONS } from "./config.js";
 import { createPylons } from "./pylon.js";
@@ -23,7 +27,7 @@ const BAND_CENTER_Y = (BAND.min + BAND.max) / 2;
  * Build the static scene and bind it to a canvas.
  *
  * @param {HTMLCanvasElement} canvas - the full-window canvas to render into.
- * @returns {{ start: () => void, dispose: () => void, onFrame: (cb: () => void) => void, scene: THREE.Scene, pylons: import("./pylon.js").Pylon[], camera: THREE.Camera, canvas: HTMLCanvasElement }}
+ * @returns {{ start: () => void, dispose: () => void, onFrame: (cb: () => void) => void, orbit: (dTheta: number, dPhi: number) => void, focusOnPylon: (pylon: import("./pylon.js").Pylon) => void, clearFocus: () => void, isFocused: () => boolean, scene: THREE.Scene, pylons: import("./pylon.js").Pylon[], camera: THREE.Camera, canvas: HTMLCanvasElement }}
  */
 export function createScene(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -73,6 +77,189 @@ export function createScene(canvas) {
       .add(new THREE.Vector3().setFromSpherical(orbitSpherical));
     camera.lookAt(pivotCenter);
   }
+
+  // ── Sideview camera focus ────────────────────────────────────────────────
+  // Selecting a pylon (double-click; see interaction.js) eases the camera in to
+  // look straight at that pylon, while an info drawer opens over the right.
+  // Closing eases the camera back to where it was. There's no tween library, so
+  // this is a hand-rolled tween advanced by the render loop (see
+  // updateFocusTween, registered on frame below). orbitSpherical is left
+  // untouched throughout so right-drag orbit resumes exactly on return.
+  //
+  // The camera always *looks* dead-centre at the pylon; to sit the pylon in the
+  // centre of the LEFT HALF of the screen (the drawer covers the right half) we
+  // shift the projection frustum horizontally via camera.setViewOffset — a crop,
+  // not a camera move, so there's no distortion. Shifting the frustum by a
+  // quarter of the width puts the optical axis at 25% from the left.
+  //
+  // A depth-of-field (bokeh) post-pass keeps the selected pylon sharp while the
+  // rest of the scene blurs: `focus` (a world distance) tracks the camera→pylon
+  // distance, and `maxblur` is ramped 0→FOCUS_MAXBLUR by the same tween, so the
+  // scene is fully sharp when idle and blurs in as the camera flies to a pylon.
+
+  // Framing constants. Tuned against the design sketch.
+  const FOCUS_DISTANCE = 4.5; // camera distance from the focused pylon's waist (metres)
+  const FOCUS_LIFT = 0.6; // raise the eye a touch above the waist for a slight top-down
+  const FOCUS_DURATION_MS = 700; // ease-in-out transition length
+  const FOCUS_OFFSET_FRACTION = 0.25; // frustum shift: pylon at 25% from left = centre of left half
+  // Bokeh DoF tuning. `aperture` is blur-per-metre-of-defocus: it must be small
+  // enough that the pylon's own ~0.9 m front-to-back depth stays inside the sharp
+  // zone (≈0.002·0.9 ≈ negligible), while the background — several metres away in
+  // depth — still reaches `maxblur`. Too large an aperture blurs the subject itself.
+  const FOCUS_APERTURE = 0.002; // ~1.8px blur per metre of defocus (keeps the deep pylon crisp)
+  const FOCUS_MAXBLUR = 0.018; // peak blur radius (fraction of screen) for the far scene
+
+  // The live look-at point the render loop aims the camera at. Seeded to the
+  // band centre (the orbit target); the focus tween animates it to a pylon and
+  // back. Kept in sync so right-drag orbit (which targets pivotCenter) is
+  // consistent after a return.
+  const currentTarget = pivotCenter.clone();
+
+  let focused = false;
+  /** @type {null | { pos: THREE.Vector3, target: THREE.Vector3 }} */
+  let homePose = null;
+  /** @type {null | { fromPos: THREE.Vector3, toPos: THREE.Vector3, fromTarget: THREE.Vector3, toTarget: THREE.Vector3, fromFrac: number, toFrac: number, fromBlur: number, toBlur: number, start: number, closing: boolean }} */
+  let focusTween = null;
+
+  // Current horizontal frustum crop (fraction of width): 0 = none (full frame),
+  // FOCUS_OFFSET_FRACTION = pylon centred in the left half. Animated by the tween;
+  // sticky on the projection matrix once set, so it persists between frames.
+  let viewOffsetFrac = 0;
+
+  // Current depth-of-field amount in [0, 1]: 0 = sharp, 1 = full bokeh. Drives
+  // the bokeh pass's maxblur; animated by the tween and held between frames.
+  let blurAmount = 0;
+
+  // Apply (or clear) the horizontal frustum crop at the current window size.
+  // Re-derived from window dimensions so a resize re-applies it correctly.
+  function applyViewOffset(frac) {
+    viewOffsetFrac = frac;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    if (frac > 0) {
+      camera.setViewOffset(width, height, frac * width, 0, width, height);
+    } else {
+      camera.clearViewOffset();
+    }
+  }
+
+  // Smoothstep ease-in-out on t ∈ [0, 1].
+  const easeInOut = (t) => t * t * (3 - 2 * t);
+
+  // Compute the framed end pose for focusing on `pylon`: aim straight at the
+  // pylon's middle (the waist = group origin), with the eye placed FOCUS_DISTANCE
+  // back along the current view direction and lifted a little for a slight
+  // top-down. No horizontal pan for now — the camera looks dead-centre.
+  function framePose(pylon) {
+    const target = pylon.object3d.position.clone(); // waist = the pylon's middle
+
+    // Approach from the current viewing direction (pylon → camera) for continuity.
+    const dir = new THREE.Vector3().subVectors(camera.position, target);
+    dir.y = 0;
+    if (dir.lengthSq() === 0) dir.set(0, 0, 1);
+    dir.normalize();
+
+    const pos = target
+      .clone()
+      .addScaledVector(dir, FOCUS_DISTANCE)
+      .add(new THREE.Vector3(0, FOCUS_LIFT, 0));
+
+    return { pos, target };
+  }
+
+  /**
+   * Ease the camera in to look at `pylon`, cropping the frustum so it sits in the
+   * centre of the left half. Saves the current pose so clearFocus() can return to
+   * it. No-op if already focused.
+   * @param {import("./pylon.js").Pylon} pylon
+   */
+  function focusOnPylon(pylon) {
+    if (focused) return;
+    focused = true;
+    homePose = { pos: camera.position.clone(), target: currentTarget.clone() };
+    const { pos, target } = framePose(pylon);
+    focusTween = {
+      fromPos: camera.position.clone(),
+      toPos: pos,
+      fromTarget: currentTarget.clone(),
+      toTarget: target,
+      fromFrac: viewOffsetFrac,
+      toFrac: FOCUS_OFFSET_FRACTION,
+      fromBlur: blurAmount,
+      toBlur: 1,
+      start: performance.now(),
+      closing: false,
+    };
+  }
+
+  /** Ease the camera back to the pre-focus pose and uncrop. No-op if not focused. */
+  function clearFocus() {
+    if (!focused || !homePose) return;
+    focusTween = {
+      fromPos: camera.position.clone(),
+      toPos: homePose.pos.clone(),
+      fromTarget: currentTarget.clone(),
+      toTarget: homePose.target.clone(),
+      fromFrac: viewOffsetFrac,
+      toFrac: 0,
+      fromBlur: blurAmount,
+      toBlur: 0,
+      start: performance.now(),
+      closing: true,
+    };
+  }
+
+  /** @returns {boolean} true while focused or mid-transition either way. */
+  function isFocused() {
+    return focused;
+  }
+
+  // Advance the active focus tween, if any; runs once per frame before render.
+  function updateFocusTween() {
+    if (!focusTween) return;
+    const t = THREE.MathUtils.clamp(
+      (performance.now() - focusTween.start) / FOCUS_DURATION_MS,
+      0,
+      1,
+    );
+    const e = easeInOut(t);
+    camera.position.lerpVectors(focusTween.fromPos, focusTween.toPos, e);
+    currentTarget.lerpVectors(focusTween.fromTarget, focusTween.toTarget, e);
+    camera.lookAt(currentTarget);
+    applyViewOffset(THREE.MathUtils.lerp(focusTween.fromFrac, focusTween.toFrac, e));
+
+    // Depth of field: keep `focus` on the live look-at point (the pylon while
+    // focused) and ramp the blur with the same eased progress.
+    blurAmount = THREE.MathUtils.lerp(focusTween.fromBlur, focusTween.toBlur, e);
+    bokehPass.uniforms["focus"].value = camera.position.distanceTo(currentTarget);
+    bokehPass.uniforms["maxblur"].value = FOCUS_MAXBLUR * blurAmount;
+
+    if (t >= 1) {
+      // A closing tween lands back at the band centre: drop focus so orbit
+      // (which targets pivotCenter) takes over cleanly on the next right-drag.
+      if (focusTween.closing) {
+        focused = false;
+        homePose = null;
+      }
+      focusTween = null;
+    }
+  }
+
+  // Post-processing composer used for the whole scene (one consistent colour
+  // pipeline). The bokeh pass sits between the scene render and output; its
+  // maxblur is 0 when idle, so the image is fully sharp until a pylon is focused.
+  // Created here (before resize() runs) so resize can size it. RenderPass/Bokeh
+  // hold references to scene+camera and render them lazily, so scene contents
+  // added after this point are still drawn.
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const bokehPass = new BokehPass(scene, camera, {
+    focus: FOCUS_DISTANCE,
+    aperture: FOCUS_APERTURE,
+    maxblur: 0,
+  });
+  composer.addPass(bokehPass);
+  composer.addPass(new OutputPass());
 
   // Ground plane the pylons stand on (y = 0). Rotated flat (XZ plane).
   const ground = new THREE.Mesh(
@@ -140,6 +327,10 @@ export function createScene(canvas) {
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
+    composer.setSize(width, height);
+    bokehPass.uniforms["aspect"].value = camera.aspect;
+    // Re-apply any active sideview crop so it tracks the new window size.
+    if (viewOffsetFrac > 0) applyViewOffset(viewOffsetFrac);
   }
   resize();
   window.addEventListener("resize", resize);
@@ -154,11 +345,14 @@ export function createScene(canvas) {
   // Keep the guide rails under their pylons as they're dragged on the ground.
   onFrame(updateRails);
 
+  // Advance the sideview focus/return camera tween each frame (no-op when idle).
+  onFrame(updateFocusTween);
+
   let frameId = 0;
   function renderLoop() {
     frameId = requestAnimationFrame(renderLoop);
     for (const cb of frameCallbacks) cb();
-    renderer.render(scene, camera);
+    composer.render();
   }
 
   function start() {
@@ -176,11 +370,24 @@ export function createScene(canvas) {
     railMaterial.dispose();
     ground.geometry.dispose();
     ground.material.dispose();
+    composer.dispose();
     renderer.dispose();
   }
 
   // Expose the camera and canvas so interaction (M3) can raycast against the
   // pylons; expose the pylons themselves for grab targets + their value getter;
   // expose the scene so connection lines (M5) can be added to it.
-  return { start, dispose, onFrame, orbit, scene, pylons, camera, canvas };
+  return {
+    start,
+    dispose,
+    onFrame,
+    orbit,
+    focusOnPylon,
+    clearFocus,
+    isFocused,
+    scene,
+    pylons,
+    camera,
+    canvas,
+  };
 }

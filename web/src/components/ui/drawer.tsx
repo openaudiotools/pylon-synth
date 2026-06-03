@@ -140,6 +140,7 @@ export function DrawerPopup({
   className,
   children,
   showCloseButton = false,
+  showBackdrop = true,
   position: positionProp,
   variant = "default",
   showBar = false,
@@ -147,6 +148,7 @@ export function DrawerPopup({
   ...props
 }: DrawerPrimitive.Popup.Props & {
   showCloseButton?: boolean;
+  showBackdrop?: boolean;
   position?: DrawerPosition;
   variant?: "default" | "straight" | "inset";
   showBar?: boolean;
@@ -157,7 +159,7 @@ export function DrawerPopup({
 
   return (
     <DrawerPortal {...portalProps}>
-      <DrawerBackdrop />
+      {showBackdrop && <DrawerBackdrop />}
       <DrawerViewport position={position} variant={variant}>
         <DrawerPrimitive.Popup
           className={cn(

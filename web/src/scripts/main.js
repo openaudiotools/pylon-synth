@@ -10,6 +10,7 @@ import { createConnections } from "./connections.js";
 import { createMidi } from "./midi.js";
 import { createSupersonic } from "./supersonic.js";
 import { createReadout } from "./readout.js";
+import { createSideview, buildPylonInfo } from "./sideview.js";
 import { PYLONS } from "./config.js";
 
 const canvas = document.getElementById("scene");
@@ -19,13 +20,24 @@ if (!canvas) {
 
 const scene = createScene(canvas);
 
+// Sideview: double-click a pylon to ease the camera in and open its info drawer;
+// dismissing the drawer eases the camera back to its prior pose.
+const sideview = createSideview({ onClose: () => scene.clearFocus() });
+
 // Left-drag a pylon to move it on the ground; right-drag a pylon to set its
-// height; right-drag empty space to orbit the camera.
+// height; right-drag empty space to orbit the camera. Double-click a pylon to
+// open the sideview; while it's open the scene is non-interactive (isBlocked).
 createInteraction({
   canvas: scene.canvas,
   camera: scene.camera,
   pylons: scene.pylons,
   orbit: scene.orbit,
+  isBlocked: () => scene.isFocused(),
+  onSelect: (pylon) => {
+    const entry = PYLONS[scene.pylons.indexOf(pylon)];
+    sideview.open(buildPylonInfo(pylon, entry));
+    scene.focusOnPylon(pylon);
+  },
 });
 
 // FM-algorithm depiction: bright-lime lines linking the connected pylons.

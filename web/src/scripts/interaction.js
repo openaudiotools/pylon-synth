@@ -29,9 +29,20 @@ const ORBIT_SPEED = 0.008;
  * @param {import("./pylon.js").Pylon[]} opts.pylons - grabbable pylons.
  * @param {(dTheta: number, dPhi: number) => void} [opts.orbit] - rotates the
  *   camera around the pivot; called on right-drag. Omit to disable orbit.
+ * @param {(pylon: import("./pylon.js").Pylon) => void} [opts.onSelect] - called
+ *   with the pylon under the cursor on a double-click (sideview selection).
+ * @param {() => boolean} [opts.isBlocked] - when it returns true, drag/orbit and
+ *   selection are ignored (e.g. while the sideview is open).
  * @returns {{ dispose: () => void, getGrabbed: () => import("./pylon.js").Pylon | null }}
  */
-export function createInteraction({ canvas, camera, pylons, orbit }) {
+export function createInteraction({
+  canvas,
+  camera,
+  pylons,
+  orbit,
+  onSelect,
+  isBlocked,
+}) {
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
 
@@ -125,6 +136,10 @@ export function createInteraction({ canvas, camera, pylons, orbit }) {
   }
 
   function onPointerDown(event) {
+    // While blocked (e.g. sideview open) the scene is non-interactive: swallow
+    // all drag/orbit starts so the focused framing stays put.
+    if (isBlocked?.()) return;
+
     // Secondary button (right): drag a pylon on the Y axis (height) if one is
     // under the cursor; otherwise orbit the camera.
     if (event.button === 2) {
@@ -201,11 +216,25 @@ export function createInteraction({ canvas, camera, pylons, orbit }) {
     event.preventDefault();
   }
 
+  // Double-click a pylon to select it (opens the sideview). Reuses the same
+  // raycaster pick as drag; ignored while blocked or when no handler is wired.
+  function onDoubleClick(event) {
+    if (!onSelect || isBlocked?.()) return;
+    updatePointer(event);
+    raycaster.setFromCamera(pointer, camera);
+    const pylon = pickPylon();
+    if (pylon) {
+      onSelect(pylon);
+      event.preventDefault();
+    }
+  }
+
   canvas.addEventListener("pointerdown", onPointerDown);
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerup", release);
   canvas.addEventListener("pointercancel", release);
   canvas.addEventListener("contextmenu", onContextMenu);
+  canvas.addEventListener("dblclick", onDoubleClick);
 
   function dispose() {
     canvas.removeEventListener("pointerdown", onPointerDown);
@@ -213,6 +242,7 @@ export function createInteraction({ canvas, camera, pylons, orbit }) {
     canvas.removeEventListener("pointerup", release);
     canvas.removeEventListener("pointercancel", release);
     canvas.removeEventListener("contextmenu", onContextMenu);
+    canvas.removeEventListener("dblclick", onDoubleClick);
   }
 
   return { dispose, getGrabbed: () => grabbed };
