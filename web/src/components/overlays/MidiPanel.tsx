@@ -1,14 +1,8 @@
 import { useSyncExternalStore } from "react";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { Dropdown } from "@/components/ui/dropdown";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectItem,
-  SelectPopup,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import type { Store } from "@/lib/store";
 
@@ -42,7 +36,6 @@ export function MidiPanel({
   onPick: (id: string) => void;
 }) {
   const state = useSyncExternalStore(store.subscribe, store.get, store.get);
-  const items = Object.fromEntries(state.ports.map((p) => [p.id, p.name]));
 
   return (
     <Card className="w-60 gap-3 rounded-lg p-3">
@@ -61,24 +54,14 @@ export function MidiPanel({
       {!state.unsupported && (
         <div className="flex flex-col gap-1.5">
           <Label className="text-muted-foreground text-xs">Output port</Label>
-          <Select
-            items={items}
+          <Dropdown
+            aria-label="MIDI output port"
             value={state.selectedId || null}
-            onValueChange={(value) => {
-              if (value) onPick(String(value));
-            }}
-          >
-            <SelectTrigger size="sm" disabled={state.ports.length === 0}>
-              <SelectValue placeholder="No MIDI outputs" />
-            </SelectTrigger>
-            <SelectPopup>
-              {state.ports.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.name}
-                </SelectItem>
-              ))}
-            </SelectPopup>
-          </Select>
+            options={state.ports.map((p) => ({ value: p.id, label: p.name }))}
+            onChange={onPick}
+            placeholder="No MIDI outputs"
+            disabled={state.ports.length === 0}
+          />
         </div>
       )}
     </Card>
