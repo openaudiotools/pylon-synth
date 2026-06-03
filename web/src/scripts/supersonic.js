@@ -17,22 +17,12 @@
 // button: first press boots the engine and starts the sequence; pressing again
 // stops it.
 
-import { PylonSynth, PARAM_DEFS } from "./pylon-synth.js";
+import { PylonSynth, ccParamMap, clampCC } from "./pylon-synth.js";
 
-/**
- * Clamp a value to the inclusive 0..127 MIDI CC range.
- * @param {number} v
- * @returns {number}
- */
-function clampCC(v) {
-  return Math.min(127, Math.max(0, v));
-}
-
-// CC number → { key, min, max } from the engine's parameter table. This is the
-// contract shared with the SuperCollider side (and config.js's pylon `cc`s).
-const CC_PARAMS = new Map(
-  PARAM_DEFS.map(([key, , min, max, , cc]) => [cc, { key, min, max }]),
-);
+// CC number → { key, label, min, max } from the engine's parameter table. This
+// is the contract shared with the SuperCollider side (and config.js's pylon
+// `cc`s); this sink ignores `label`.
+const CC_PARAMS = ccParamMap();
 
 /**
  * Build the in-page synth sink: a status line + Play/Stop button, plus a frame

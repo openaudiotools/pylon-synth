@@ -11,6 +11,7 @@
 // denies the permission prompt.
 
 import { MIDI_CHANNEL } from "./config.js";
+import { clampCC } from "./pylon-synth.js";
 
 // MIDI Control Change status byte for the configured channel. 0xB0 is "CC on
 // channel 1"; OR-ing the channel index (0..15) selects the channel.
@@ -18,15 +19,6 @@ const CC_STATUS = 0xb0 | (MIDI_CHANNEL & 0x0f);
 
 // Default port match: prefer a loopMIDI virtual port if one is present.
 const DEFAULT_PORT_MATCH = /loopmidi/i;
-
-/**
- * Clamp a value to the inclusive 0..127 MIDI CC range.
- * @param {number} v
- * @returns {number}
- */
-function clampCC(v) {
-  return Math.min(127, Math.max(0, v));
-}
 
 /**
  * Build the MIDI controller: request access, render a port picker + status

@@ -6,12 +6,10 @@
 // displayed value matches what the synth/MIDI sinks send: the same
 // CC 0..127 → [min, max] mapping, updated only when the integer CC changes.
 
-import { PARAM_DEFS } from "./pylon-synth.js";
+import { ccParamMap, clampCC } from "./pylon-synth.js";
 
 // CC number → { key, label, min, max } from the engine's parameter table.
-const CC_PARAMS = new Map(
-  PARAM_DEFS.map(([key, label, min, max, , cc]) => [cc, { key, label, min, max }]),
-);
+const CC_PARAMS = ccParamMap();
 
 /**
  * Build the readout panel and a per-frame `tick()` that keeps it current.
@@ -34,7 +32,7 @@ export function createReadout({ pylons, entries, container = document.body }) {
   function tick() {
     for (let i = 0; i < rows.length; i++) {
       const { pylon, param } = rows[i];
-      const cc = Math.min(127, Math.max(0, Math.round(pylon.getNormalized() * 127)));
+      const cc = clampCC(Math.round(pylon.getNormalized() * 127));
       if (cc === last[i]) continue;
       last[i] = cc;
       const value = param.min + (cc / 127) * (param.max - param.min);

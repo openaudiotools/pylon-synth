@@ -14,6 +14,27 @@ export const PARAM_DEFS = [
   ['rel',     'Release',  0.01,  4.0, 0.5,  8],
 ];
 
+/**
+ * Clamp a value to the inclusive 0..127 MIDI CC range.
+ * @param {number} v
+ * @returns {number}
+ */
+export function clampCC(v) {
+  return Math.min(127, Math.max(0, v));
+}
+
+/**
+ * Build a `Map<cc, { key, label, min, max }>` from PARAM_DEFS — the CC→param
+ * contract shared by every sink (midi.js, supersonic.js) and the readout.
+ * `label` is always included; consumers that don't need it simply ignore it.
+ * @returns {Map<number, { key: string, label: string, min: number, max: number }>}
+ */
+export function ccParamMap() {
+  return new Map(
+    PARAM_DEFS.map(([key, label, min, max, , cc]) => [cc, { key, label, min, max }]),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Ritusen pentatonic scale helpers
 // ---------------------------------------------------------------------------
